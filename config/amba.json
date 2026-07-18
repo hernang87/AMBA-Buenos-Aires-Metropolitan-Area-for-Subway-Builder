@@ -1,0 +1,16 @@
+{
+  "city": "AMBA",
+  "name": "Buenos Aires Metropolitan Area",
+  "country": "AR",
+  "creator": "",
+  "version": "0.1.0",
+  "osmpbf": "argentina-latest.osm.pbf",
+  "bbox": [-59.4, -35.2, -57.7, -34.2],
+  "initialViewState": {"longitude": -58.45, "latitude": -34.65, "zoom": 10, "bearing": 0},
+  "labels": {
+    "cities": ["city", "town"],
+    "suburbs": ["suburb", "village"],
+    "neighborhoods": ["neighbourhood", "quarter", "locality"]
+  },
+  "demand": {"gravity_decay_km": 12.0, "minimum_flow": 25, "grid_degrees": 0.02}
+}
