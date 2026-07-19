@@ -61,7 +61,7 @@ def query(cookie_jar: Path, selection: str) -> list[dict[str, int | str]]:
     for key, value in params.items():
         command.extend(["--data-urlencode", f"{key}={value}"])
     landing = subprocess.run(command, check=True, capture_output=True, text=True).stdout
-    match = re.search(r'<iframe src="([^"]+)"', landing)
+    match = re.search(r"<iframe src=['\"]([^'\"]+)['\"]", landing)
     if not match:
         raise RuntimeError("Redatam did not return an output iframe")
     grid_url = "https://redatam.indec.gob.ar" + match.group(1)

@@ -3,7 +3,7 @@
   "name": "Buenos Aires Metropolitan Area",
   "country": "AR",
   "creator": "",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "osmpbf": "argentina-latest.osm.pbf",
   "bbox": [-59.4, -35.2, -57.7, -34.2],
   "initialViewState": {"longitude": -58.45, "latitude": -34.65, "zoom": 10, "bearing": 0},
@@ -12,5 +12,17 @@
     "suburbs": ["suburb", "village"],
     "neighborhoods": ["neighbourhood", "quarter", "locality"]
   },
-  "demand": {"gravity_decay_km": 12.0, "minimum_flow": 25, "grid_degrees": 0.02}
+  "demand": {"gravity_decay_km": 12.0, "minimum_flow": 25, "grid_degrees": 0.02},
+  "workplaces": {
+    "url": "https://cdn.produccion.gob.ar/cdn-cep/establecimientos-productivos/distribucion_establecimientos_productivos_sexo.csv",
+    "year": 2022,
+    "grid_degrees": 0.02,
+    "employment_weights": {
+      "a. 1-9": 5.0,
+      "b. 10-49": 29.5,
+      "c. 50-199": 124.5,
+      "d. 200-499": 349.5,
+      "e. 500+": 500.0
+    }
+  }
 }

@@ -6,7 +6,8 @@ Reproducible build pipeline for an Área Metropolitana de Buenos Aires map for S
 
 - `argentina-latest.osm.pbf` at the repository root, or another Argentina OSM PBF.
 - An INDEC RMBA census-area GeoJSON file.
-- A UTF-8 CSV containing `area_id,population,jobs` for the same areas.
+- A UTF-8 CSV containing at least `area_id,population` for the same census areas. The exporter may retain `jobs` for legacy regions output, but demand generation does not use it.
+- The official CEP XXI geocoded formal-workplace CSV, downloaded by `fetch_workplace_data.py`.
 
 The census CSV is intentionally an input rather than checked-in data; record its exact INDEC source in `data/SOURCES.md`.
 
@@ -27,6 +28,8 @@ Fetch and prepare the machine-readable inputs:
 ./scripts/download_sources.sh
 python scripts/fetch_redatam_stats.py
 python scripts/prepare_census.py --areas data/raw/rmba_areas.geojson --stats data/raw/rmba_stats.csv --output data/processed/areas.csv
+python scripts/fetch_workplace_data.py
+python scripts/prepare_workplaces.py
 ```
 
 Build and package:
@@ -42,7 +45,7 @@ The final archive is written to `output/AMBA.zip`.
 
 ## Demand model
 
-Demand uses official Census 2022 population and employment aggregates by RMBA area. Each area becomes a spatial demand point at its representative centroid. Residents are assigned to jobs with a documented distance-weighted synthetic OD model in Depot's `points`/`pops` format. It is not an observed trip matrix.
+Demand uses official Census 2022 population by RMBA census area and CEP XXI/SIPA geocoded formal workplace establishments. Workplace employment bands are converted to documented weights and aggregated into approximately 0.02-degree destination cells. Residents are assigned to workplace cells with a distance-weighted synthetic OD model in Depot's `points`/`pops` format. It is not an observed trip matrix and excludes informal, self-employed, domestic, and uncovered public employment.
 
 ## Sources
 

@@ -175,7 +175,7 @@ def main() -> None:
         "name": config["name"],
         "code": config["city"],
         "country": config["country"],
-        "description": "Buenos Aires metropolitan area map built from OpenStreetMap and INDEC Census 2022 statistics.",
+        "description": "Buenos Aires metropolitan area map built from OpenStreetMap, INDEC Census 2022 population, and CEP XXI geocoded formal workplace data.",
         "population": 0,
         "bbox": config["bbox"],
         "initialViewState": config["initialViewState"],
