@@ -31,7 +31,7 @@ def load_origins(path: Path, grid_degrees: float, bbox: list[float]) -> list[dic
     with path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
             location = representative_point(json.loads(row["geometry"]))
-            population = float(row["population"])
+            population = float(row["jobs"])
             key = (math.floor(location[0] / grid_degrees), math.floor(location[1] / grid_degrees))
             group = grouped.setdefault(
                 key,
@@ -54,7 +54,7 @@ def load_origins(path: Path, grid_degrees: float, bbox: list[float]) -> list[dic
                 min(max(group["weighted_lon"] / group["weight"], west), east),
                 min(max(group["weighted_lat"] / group["weight"], south), north),
             ),
-            "population": group["population"],
+            "employed_residents": group["population"],
         }
         for (grid_lon, grid_lat), group in sorted(grouped.items())
     ]
@@ -88,6 +88,7 @@ def main() -> None:
     demand_config = config["demand"]
     decay = float(demand_config["gravity_decay_km"])
     minimum_flow = int(demand_config["minimum_flow"])
+    maximum_flow = int(demand_config["maximum_flow"])
     grid_degrees = float(demand_config["grid_degrees"])
     bbox = config.get("bbox", [-180, -90, 180, 90])
     origins = load_origins(args.areas, grid_degrees, bbox)
@@ -104,22 +105,22 @@ def main() -> None:
     pops = []
 
     for origin_index, origin in enumerate(origins):
-        resident_count = round(float(origin["population"]))
+        employed_count = round(float(origin["employed_residents"]))
         weights = [
             float(workplace["employment_weight"])
             * math.exp(-distance_km(origin["location"], workplace["location"]) / decay)
             for workplace in workplaces
         ]
         total_weight = sum(weights)
-        if resident_count <= 0 or total_weight <= 0:
+        if employed_count <= 0 or total_weight <= 0:
             continue
-        allocations = [round(resident_count * weight / total_weight) for weight in weights]
+        allocations = [round(employed_count * weight / total_weight) for weight in weights]
         largest_index = max(range(len(allocations)), key=allocations.__getitem__)
-        allocations[largest_index] += resident_count - sum(allocations)
+        allocations[largest_index] += employed_count - sum(allocations)
         retained = [index for index, size in enumerate(allocations) if size >= minimum_flow]
         if not retained:
             retained = [largest_index]
-        discarded = resident_count - sum(allocations[index] for index in retained)
+        discarded = employed_count - sum(allocations[index] for index in retained)
         largest_retained = max(retained, key=allocations.__getitem__)
         allocations[largest_retained] += discarded
 
@@ -129,19 +130,21 @@ def main() -> None:
             origin_point = points_by_id[origin["id"]]
             destination_point = points_by_id[workplace["id"]]
             distance = distance_km(origin["location"], workplace["location"])
-            pop = {
-                "residenceId": origin["id"],
-                "jobId": workplace["id"],
-                "drivingSeconds": round(distance / 35 * 3600),
-                "drivingDistance": round(distance * 1000),
-                "size": size,
-                "id": f"pop_{origin_index}_{workplace_index}",
-            }
-            pops.append(pop)
-            origin_point["residents"] += size
-            destination_point["jobs"] += size
-            origin_point["popIds"].append(pop["id"])
-            destination_point["popIds"].append(pop["id"])
+            for chunk_index, offset in enumerate(range(0, size, maximum_flow)):
+                chunk_size = min(maximum_flow, size - offset)
+                pop = {
+                    "residenceId": origin["id"],
+                    "jobId": workplace["id"],
+                    "drivingSeconds": round(distance / 35 * 3600),
+                    "drivingDistance": round(distance * 1000),
+                    "size": chunk_size,
+                    "id": f"pop_{origin_index}_{workplace_index}_{chunk_index}",
+                }
+                pops.append(pop)
+                origin_point["residents"] += chunk_size
+                destination_point["jobs"] += chunk_size
+                origin_point["popIds"].append(pop["id"])
+                destination_point["popIds"].append(pop["id"])
 
     points = [point for point in points if point["residents"] or point["jobs"]]
     args.output.parent.mkdir(parents=True, exist_ok=True)

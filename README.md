@@ -6,7 +6,7 @@ Reproducible build pipeline for an Área Metropolitana de Buenos Aires map for S
 
 - `argentina-latest.osm.pbf` at the repository root, or another Argentina OSM PBF.
 - An INDEC RMBA census-area GeoJSON file.
-- A UTF-8 CSV containing at least `area_id,population` for the same census areas. The exporter may retain `jobs` for legacy regions output, but demand generation does not use it.
+- A UTF-8 CSV containing `area_id,population,jobs` for the same census areas. `population` is total residents and `jobs` is employed residents used as demand producers.
 - The official CEP XXI geocoded formal-workplace CSV, downloaded by `fetch_workplace_data.py`.
 
 The census CSV is intentionally an input rather than checked-in data; record its exact INDEC source in `data/SOURCES.md`.
@@ -45,7 +45,7 @@ The final archive is written to `output/AMBA.zip`.
 
 ## Demand model
 
-Demand uses official Census 2022 population by RMBA census area and CEP XXI/SIPA geocoded formal workplace establishments. Workplace employment bands are converted to documented weights and aggregated into approximately 0.02-degree destination cells. Residents are assigned to workplace cells with a distance-weighted synthetic OD model in Depot's `points`/`pops` format. It is not an observed trip matrix and excludes informal, self-employed, domestic, and uncovered public employment.
+Demand uses employed residents (`Ocupado`) from the official Census 2022 RMBA census-area export as trip producers, rather than total residential population. CEP XXI/SIPA geocoded formal workplace establishments provide destination weights; their employment bands are converted to documented weights and aggregated into approximately 0.02-degree destination cells. Employed residents are assigned to workplace cells with a distance-weighted synthetic OD model in Depot's `points`/`pops` format, with each generated population group capped at 15,000. It is not an observed trip matrix and excludes informal, self-employed, domestic, and uncovered public employment.
 
 ## Sources
 

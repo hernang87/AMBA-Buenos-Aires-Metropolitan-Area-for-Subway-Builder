@@ -18,9 +18,9 @@ UTF-8 CSV with one row per geometry identifier and at least these columns:
 
 `area_id,population`
 
-`population` is resident population. The legacy `jobs` column may be present for the separate regions export, but it is no longer used to locate workplace destinations.
+`population` is resident population and `jobs` is employed residents (`Ocupado`), used as the trip-producing population for demand generation. The `jobs` column does not locate workplaces.
 
-The repository exporter `scripts/fetch_redatam_stats.py` queries the INDEC Redatam Census 2022 `PERSONA.CONDACT` table at `RADIO` level for CABA and Buenos Aires province and maps the `Total` column to `population`; it retains `Ocupado` as a legacy `jobs` column for the regions export. `prepare_census.py` then filters the result to the AMBA bounding box. `Ocupado` is not used as a workplace-location variable because it describes employed residents, not workplace locations.
+The repository exporter `scripts/fetch_redatam_stats.py` queries the INDEC Redatam Census 2022 `PERSONA.CONDACT` table at `RADIO` level for CABA and Buenos Aires province and maps the `Total` column to `population` and `Ocupado` to `jobs`. `prepare_census.py` then filters the result to the AMBA bounding box. `Ocupado` is used as the trip-producing population, not as a workplace-location variable, because it describes employed residents rather than workplace locations.
 
 ### `workplaces.csv`
 
