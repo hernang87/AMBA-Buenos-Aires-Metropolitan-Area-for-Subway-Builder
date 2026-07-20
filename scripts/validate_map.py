@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP = ROOT / "output/AMBA"
+MAX_DEMAND_SIZE = 200
 
 
 def main() -> None:
@@ -30,9 +31,13 @@ def main() -> None:
             raise SystemExit(f"Invalid demand reference: {pop['id']}")
         if pop["size"] <= 0:
             raise SystemExit(f"Non-positive demand size: {pop['id']}")
+        if pop["size"] > MAX_DEMAND_SIZE:
+            raise SystemExit(f"Demand size exceeds {MAX_DEMAND_SIZE}: {pop['id']}")
         resident_total += pop["size"]
         job_total += pop["size"]
     for point in points.values():
+        if point["jobs"] > MAX_DEMAND_SIZE:
+            raise SystemExit(f"Job point exceeds {MAX_DEMAND_SIZE}: {point['id']}")
         longitude, latitude = point["location"]
         if not bbox[0] <= longitude <= bbox[2] or not bbox[1] <= latitude <= bbox[3]:
             raise SystemExit(f"Demand point outside bbox: {point['id']}")

@@ -26,7 +26,9 @@ The repository exporter `scripts/fetch_redatam_stats.py` queries the INDEC Redat
 
 The workplace input is the official [CEP XXI/SIPA distribution of productive establishments](https://cdn.produccion.gob.ar/cdn-cep/establecimientos-productivos/distribucion_establecimientos_productivos_sexo.csv), published by the Ministry of Economy and the Ministry of Labour. It contains rounded WGS84 coordinates, year, sector, and grouped employment per establishment. The source methodology states that employment is assigned to the establishment's registered workplace address and that the published data covers formal registered salaried employment.
 
-`scripts/fetch_workplace_data.py` downloads the source; `scripts/prepare_workplaces.py` filters to 2022 and the AMBA bounding box, then converts employment bands to destination weights: `1–9 → 5`, `10–49 → 29.5`, `50–199 → 124.5`, `200–499 → 349.5`, and `500+ → 500` as a conservative lower-bound assumption. Establishments are aggregated into the configured 0.02-degree grid using employment-weighted coordinates.
+`scripts/fetch_workplace_data.py` downloads the source; `scripts/prepare_workplaces.py` filters to 2022 and the AMBA bounding box, then retains each establishment coordinate and converts employment bands to destination capacities: `1–9 → 5`, `10–49 → 29.5`, `50–199 → 124.5`, `200–499 → 349.5`, and `500+ → 500` as a conservative lower-bound assumption. The configured 0.005-degree cell is used only as an internal balancing index; the generated job points remain dispersed at the source establishment coordinates.
+
+Demand first balances formal workplace capacity against scaled residence-based employed residents with a distance-constrained iterative proportional fitting model. The difference between total employed residents and formal workplace capacity is represented as local residual employment at residential origins because the source does not locate those jobs. Exported populations and job points are split into groups of at most 200 for game compatibility.
 
 ## Existing local input
 

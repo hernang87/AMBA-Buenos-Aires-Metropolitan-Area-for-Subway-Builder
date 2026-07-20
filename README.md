@@ -19,7 +19,7 @@ Install Depot and its documented Python/CLI dependencies. The map generator requ
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -U pip
-python -m pip install git+https://github.com/Subway-Builder-Modded/depot.git
+python -m pip install numpy shapely git+https://github.com/Subway-Builder-Modded/depot.git
 ```
 
 Fetch and prepare the machine-readable inputs:
@@ -45,7 +45,7 @@ The final archive is written to `output/AMBA.zip`.
 
 ## Demand model
 
-Demand uses employed residents (`Ocupado`) from the official Census 2022 RMBA census-area export as trip producers, rather than total residential population. CEP XXI/SIPA geocoded formal workplace establishments provide destination weights; their employment bands are converted to documented weights and aggregated into approximately 0.02-degree destination cells. Employed residents are assigned to workplace cells with a distance-weighted synthetic OD model in Depot's `points`/`pops` format, with each generated population group capped at 15,000. It is not an observed trip matrix and excludes informal, self-employed, domestic, and uncovered public employment.
+Demand uses employed residents (`Ocupado`) from the official Census 2022 RMBA census-area export. Formal CEP XXI/SIPA workplace capacity is balanced against scaled employed-resident origins with a doubly constrained gravity model. The 0.005-degree cell is used only as an internal balancing index; exported job points retain the original establishment coordinates. Employment not represented by the formal workplace source is modeled as local residual employment at residential origins. Every exported population and job point is capped at 200. This is modeled demand, not an observed OD matrix, and the workplace source excludes informal, self-employed, domestic, and uncovered public employment.
 
 ## Sources
 
