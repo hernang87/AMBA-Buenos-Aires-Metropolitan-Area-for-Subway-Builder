@@ -45,7 +45,7 @@ The final archive is written to `output/AMBA.zip`.
 
 ## Demand model
 
-Demand uses employed residents (`Ocupado`) from the official Census 2022 RMBA census-area export. Formal CEP XXI/SIPA workplace capacity is balanced against scaled employed-resident origins with a doubly constrained gravity model. The 0.005-degree cell is used only as an internal balancing index; exported job points retain the original establishment coordinates. Employment not represented by the formal workplace source is modeled as local residual employment at residential origins. Every exported population and job point is capped at 200. This is modeled demand, not an observed OD matrix, and the workplace source excludes informal, self-employed, domestic, and uncovered public employment.
+Demand uses employed residents (`Ocupado`) from the official Census 2022 RMBA census-area export. Formal CEP XXI/SIPA workplace capacity is balanced against scaled employed-resident origins with a doubly constrained gravity model. Establishments sharing a rounded source coordinate are combined, but the 0.005-degree cell is used only as an internal balancing index; exported job points retain dispersed source coordinates. Employment not represented by the formal workplace source is modeled as local residual employment at residential origins. Every exported population and job point is capped at 200. This is modeled demand, not an observed OD matrix, and the workplace source excludes informal, self-employed, domestic, and uncovered public employment.
 
 ## Sources
 
