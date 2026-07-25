@@ -13,7 +13,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare SubwayBuilder Regions datasets for AMBA")
     parser.add_argument("--areas", type=Path, default=Path("data/raw/rmba_areas.geojson"))
     parser.add_argument("--stats", type=Path, default=Path("data/processed/areas.csv"))
-    parser.add_argument("--output", type=Path, default=Path("output/AMBA-regions"))
+    parser.add_argument("--output", type=Path, default=Path("output/BUE-regions"))
     args = parser.parse_args()
 
     stats = pd.read_csv(args.stats, dtype={"area_id": str})
@@ -84,7 +84,7 @@ def main() -> None:
     readme.write_text(
         "AMBA datasets for SubwayBuilder Regions.\n\n"
         "Copy the two GeoJSON files into your Subway Builder Regions mod directory:\n"
-        "mods/regions/data/AMBA/\n\n"
+        "mods/regions/data/BUE/\n\n"
         "The radio layer uses INDEC cod_indec as its stable area_id.\n"
         "The partido layer dissolves those radio geometries by the first five\n"
         "digits of cod_indec and aggregates population and employed people.\n",
@@ -92,7 +92,7 @@ def main() -> None:
     )
     files.append(readme)
 
-    archive = args.output.parent / "AMBA-regions.zip"
+    archive = args.output.parent / "BUE-regions.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as handle:
         for path in files:
             handle.write(path, path.name)

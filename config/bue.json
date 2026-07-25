@@ -1,9 +1,9 @@
 {
-  "city": "AMBA",
+  "city": "BUE",
   "name": "Buenos Aires Metropolitan Area",
   "country": "AR",
   "creator": "",
-  "version": "0.2.6",
+  "version": "0.3.0",
   "osmpbf": "argentina-latest.osm.pbf",
   "bbox": [-59.4, -35.2, -57.7, -34.2],
   "initialViewState": {"longitude": -58.45, "latitude": -34.65, "zoom": 10, "bearing": 0},

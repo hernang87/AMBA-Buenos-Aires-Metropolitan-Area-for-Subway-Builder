@@ -723,8 +723,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--areas", type=Path, default=ROOT / "data/processed/areas.csv")
     parser.add_argument("--workplaces", type=Path, default=ROOT / "data/processed/workplaces.csv")
-    parser.add_argument("--config", type=Path, default=ROOT / "config/amba.json")
-    parser.add_argument("--output", type=Path, default=ROOT / "output/AMBA/demand_data.json")
+    parser.add_argument("--config", type=Path, default=ROOT / "config/bue.json")
+    parser.add_argument("--output", type=Path, default=ROOT / "output/BUE/demand_data.json")
     args = parser.parse_args()
 
     config = json.loads(args.config.read_text(encoding="utf-8"))

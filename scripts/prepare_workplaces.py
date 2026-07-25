@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare dispersed geocoded workplace establishments for demand generation.")
     parser.add_argument("--input", type=Path, default=ROOT / "data/raw/workplaces.csv")
-    parser.add_argument("--config", type=Path, default=ROOT / "config/amba.json")
+    parser.add_argument("--config", type=Path, default=ROOT / "config/bue.json")
     parser.add_argument("--output", type=Path, default=ROOT / "data/processed/workplaces.csv")
     args = parser.parse_args()
 

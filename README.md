@@ -41,7 +41,7 @@ python scripts/validate_map.py
 python scripts/package_map.py
 ```
 
-The final archive is written to `output/AMBA.zip`.
+The final archive is written to `output/amba.zip`. The registry map ID remains `amba`, while the packaged city code and PMTiles asset use `BUE`.
 
 ## Demand model
 
@@ -49,7 +49,7 @@ Demand uses employed residents (`Ocupado`) from the official Census 2022 RMBA ce
 
 The workplace source publishes coordinates rounded to 0.001 degrees. Exporting those locations directly creates a misleading regular lattice. Demand generation instead builds 6,000 adaptive display clusters from the 18,018 census radios and assigns each workplace through its nearest radio. The regular 0.02-degree zones remain internal to the gravity solve and are never exported as points. Employment not represented by the formal workplace source is modeled as local residual employment at residential clusters.
 
-Only individual population records are capped at 200. A demand point may contain more than 200 residents or jobs, and all roles in an adaptive cluster share one point. The build fails if it produces more than 100,000 population records. `output/AMBA/demand_report.json` records solver, clustering, cardinality, population-size, and commute-distance diagnostics. This is modeled demand, not an observed OD matrix, and the workplace source excludes informal, self-employed, domestic, and uncovered public employment.
+Only individual population records are capped at 200. A demand point may contain more than 200 residents or jobs, and all roles in an adaptive cluster share one point. The build fails if it produces more than 100,000 population records. `output/BUE/demand_report.json` records solver, clustering, cardinality, population-size, and commute-distance diagnostics. This is modeled demand, not an observed OD matrix, and the workplace source excludes informal, self-employed, domestic, and uncovered public employment.
 
 Run the focused regression suite with:
 

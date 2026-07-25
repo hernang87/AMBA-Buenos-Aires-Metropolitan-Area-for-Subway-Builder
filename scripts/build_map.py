@@ -141,9 +141,9 @@ def patch_generator(generator: MapGen, cleaned_json: Path) -> None:
 
 
 def main() -> None:
-    config = json.loads((ROOT / "config/amba.json").read_text(encoding="utf-8"))
+    config = json.loads((ROOT / "config/bue.json").read_text(encoding="utf-8"))
     output_root = ROOT / "output"
-    output = output_root / "AMBA"
+    output = output_root / "BUE"
     output.mkdir(parents=True, exist_ok=True)
     osmpbf = Path(os.environ.get("OSM_PBF", config["osmpbf"])).expanduser()
     if not osmpbf.is_absolute():

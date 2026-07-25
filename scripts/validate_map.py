@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAP = ROOT / "output/AMBA"
+MAP = ROOT / "output/BUE"
 def validate_demand(
     config: dict,
     demand: dict,
@@ -118,9 +118,9 @@ def main() -> None:
     config = json.loads((MAP / "config.json").read_text(encoding="utf-8"))
     demand = json.loads((MAP / "demand_data.json").read_text(encoding="utf-8"))
     report = json.loads((MAP / "demand_report.json").read_text(encoding="utf-8"))
-    source_config = json.loads((ROOT / "config/amba.json").read_text(encoding="utf-8"))
+    source_config = json.loads((ROOT / "config/bue.json").read_text(encoding="utf-8"))
     required = [
-        "AMBA.pmtiles",
+        "BUE.pmtiles",
         "roads.geojson",
         "runways_taxiways.geojson",
         "buildings_index.json",
@@ -132,8 +132,8 @@ def main() -> None:
     missing = [name for name in required if not (MAP / name).exists()]
     if missing:
         raise SystemExit(f"Missing map files: {', '.join(missing)}")
-    if config.get("code") != "AMBA":
-        raise SystemExit("config.json must use code AMBA")
+    if config.get("code") != "BUE":
+        raise SystemExit("config.json must use code BUE")
     allowed_job_locations = {
         tuple(point["location"])
         for point in demand["points"]
@@ -157,7 +157,7 @@ def main() -> None:
     except ValueError as error:
         raise SystemExit(str(error)) from error
     print(
-        f"Validated AMBA: {summary['points']} points, "
+        f"Validated BUE: {summary['points']} points, "
         f"{summary['populations']} populations, {summary['population']} employed residents"
     )
 
