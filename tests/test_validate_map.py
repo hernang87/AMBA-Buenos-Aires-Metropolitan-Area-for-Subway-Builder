@@ -102,10 +102,11 @@ class DemandReportValidationTests(unittest.TestCase):
                 "model": {
                     "dense_formal_mean_km": 12.0,
                     "dense_formal_p90_km": 22.0,
-                    "sparse_formal_mean_km": 13.5,
-                    "sparse_formal_p90_km": 25.0,
+                    "exported_formal_mean_km": 13.5,
+                    "exported_formal_p90_km": 25.0,
+                    "solver_zones": 25,
                 },
-                "output": {"duplicate_coordinates": 0, "populations": 100},
+                "output": {"duplicate_coordinates": 0, "populations": 100, "points": 100},
             },
             maximum_population_count=250,
         )
@@ -117,10 +118,27 @@ class DemandReportValidationTests(unittest.TestCase):
                     "model": {
                         "dense_formal_mean_km": 12.0,
                         "dense_formal_p90_km": 22.0,
-                        "sparse_formal_mean_km": 14.1,
-                        "sparse_formal_p90_km": 25.0,
+                        "exported_formal_mean_km": 14.1,
+                        "exported_formal_p90_km": 25.0,
+                        "solver_zones": 25,
                     },
-                    "output": {"duplicate_coordinates": 0, "populations": 100},
+                    "output": {"duplicate_coordinates": 0, "populations": 100, "points": 100},
+                },
+                maximum_population_count=250,
+            )
+
+    def test_rejects_excessively_short_mean_commute(self):
+        with self.assertRaisesRegex(ValueError, "mean commute drift"):
+            validate_report(
+                {
+                    "model": {
+                        "dense_formal_mean_km": 12.0,
+                        "dense_formal_p90_km": 22.0,
+                        "exported_formal_mean_km": 9.9,
+                        "exported_formal_p90_km": 20.0,
+                        "solver_zones": 25,
+                    },
+                    "output": {"duplicate_coordinates": 0, "populations": 100, "points": 100},
                 },
                 maximum_population_count=250,
             )

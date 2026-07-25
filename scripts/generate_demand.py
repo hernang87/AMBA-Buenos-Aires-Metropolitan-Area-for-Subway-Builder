@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import heapq
 import json
 import math
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
+from scipy.cluster.hierarchy import cut_tree, linkage
 from scipy.optimize import linprog
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import maximum_flow
@@ -46,38 +48,145 @@ def integerize(values: np.ndarray, total: int | None = None) -> np.ndarray:
     return floors
 
 
-def load_origins(path: Path, grid_degrees: float, bbox: list[float]) -> list[dict[str, object]]:
-    grouped: dict[tuple[int, int], dict[str, float]] = {}
+def load_census_radios(path: Path, solver_zone_degrees: float) -> list[dict[str, object]]:
+    radios: list[dict[str, object]] = []
     with path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
             location = representative_point(json.loads(row["geometry"]))
-            employed_residents = float(row["jobs"])
-            key = (math.floor(location[0] / grid_degrees), math.floor(location[1] / grid_degrees))
-            group = grouped.setdefault(
-                key,
-                {"employed_residents": 0.0, "weighted_lon": 0.0, "weighted_lat": 0.0, "weight": 0.0},
+            radios.append(
+                {
+                    "id": row["area_id"],
+                    "location": location,
+                    "employed_residents": int(round(float(row["jobs"]))),
+                    "zone_key": (
+                        math.floor(location[0] / solver_zone_degrees),
+                        math.floor(location[1] / solver_zone_degrees),
+                    ),
+                }
             )
-            location_weight = max(employed_residents, 1.0)
-            group["employed_residents"] += employed_residents
-            group["weighted_lon"] += location[0] * location_weight
-            group["weighted_lat"] += location[1] * location_weight
-            group["weight"] += location_weight
-
-    if not grouped:
+    if not radios:
         raise ValueError("No prepared census areas found")
+    return radios
 
-    west, south, east, north = bbox
-    return [
-        {
-            "id": f"origin_{grid_lon}_{grid_lat}",
-            "location": (
-                min(max(group["weighted_lon"] / group["weight"], west), east),
-                min(max(group["weighted_lat"] / group["weight"], south), north),
-            ),
-            "employed_residents": group["employed_residents"],
-        }
-        for (grid_lon, grid_lat), group in sorted(grouped.items())
+
+def allocate_cluster_counts(
+    zone_employment: list[int],
+    zone_radio_counts: list[int],
+    display_cluster_count: int,
+) -> list[int]:
+    zone_count = len(zone_employment)
+    total_radios = sum(zone_radio_counts)
+    if display_cluster_count < zone_count or display_cluster_count > total_radios:
+        raise ValueError(
+            f"display_cluster_count must be between solver-zone count {zone_count} "
+            f"and census-radio count {total_radios}"
+        )
+    counts = [1] * zone_count
+    priorities: list[tuple[float, int]] = []
+    for zone_index, (employment, radio_count) in enumerate(zip(zone_employment, zone_radio_counts)):
+        if radio_count > 1:
+            heapq.heappush(priorities, (-employment / 2, zone_index))
+    for _ in range(display_cluster_count - zone_count):
+        if not priorities:
+            raise ValueError("Could not allocate the requested display clusters")
+        _, zone_index = heapq.heappop(priorities)
+        counts[zone_index] += 1
+        if counts[zone_index] < zone_radio_counts[zone_index]:
+            heapq.heappush(
+                priorities,
+                (-zone_employment[zone_index] / (counts[zone_index] + 1), zone_index),
+            )
+    return counts
+
+
+def build_adaptive_clusters(
+    radios: list[dict[str, object]],
+    display_cluster_count: int,
+    bbox: list[float] | None = None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    radio_indices_by_zone: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for radio_index, radio in enumerate(radios):
+        radio_indices_by_zone[tuple(radio["zone_key"])].append(radio_index)
+    zone_keys = sorted(radio_indices_by_zone)
+    zone_employment = [
+        sum(int(radios[index]["employed_residents"]) for index in radio_indices_by_zone[key])
+        for key in zone_keys
     ]
+    cluster_counts = allocate_cluster_counts(
+        zone_employment,
+        [len(radio_indices_by_zone[key]) for key in zone_keys],
+        display_cluster_count,
+    )
+    mean_latitude = math.radians(
+        sum(float(radio["location"][1]) for radio in radios) / len(radios)
+    )
+    longitude_scale = math.cos(mean_latitude)
+    clusters: list[dict[str, object]] = []
+    solver_zones: list[dict[str, object]] = []
+    for zone_index, (zone_key, cluster_count) in enumerate(zip(zone_keys, cluster_counts)):
+        radio_indices = radio_indices_by_zone[zone_key]
+        coordinates = np.array(
+            [
+                (
+                    float(radios[index]["location"][0]) * longitude_scale,
+                    float(radios[index]["location"][1]),
+                )
+                for index in radio_indices
+            ],
+            dtype=float,
+        )
+        labels = (
+            np.zeros(len(radio_indices), dtype=np.int64)
+            if cluster_count == 1
+            else cut_tree(linkage(coordinates, method="ward"), n_clusters=[cluster_count]).ravel()
+        )
+        zone_cluster_indices: list[int] = []
+        for label in range(cluster_count):
+            member_indices = [
+                radio_index
+                for radio_index, member_label in zip(radio_indices, labels)
+                if int(member_label) == label
+            ]
+            weights = np.array(
+                [max(int(radios[index]["employed_residents"]), 1) for index in member_indices],
+                dtype=float,
+            )
+            member_locations = np.array([radios[index]["location"] for index in member_indices], dtype=float)
+            cluster_index = len(clusters)
+            longitude, latitude = np.average(member_locations, axis=0, weights=weights)
+            if bbox is not None:
+                west, south, east, north = bbox
+                longitude = min(max(float(longitude), west), east)
+                latitude = min(max(float(latitude), south), north)
+            cluster = {
+                "id": f"origin_{cluster_index:05d}",
+                "location": (float(longitude), float(latitude)),
+                "employed_residents": sum(int(radios[index]["employed_residents"]) for index in member_indices),
+                "radio_count": len(member_indices),
+                "zone_index": zone_index,
+            }
+            clusters.append(cluster)
+            zone_cluster_indices.append(cluster_index)
+            for radio_index in member_indices:
+                radios[radio_index]["cluster_index"] = cluster_index
+        zone_weights = np.array(
+            [max(int(clusters[index]["employed_residents"]), 1) for index in zone_cluster_indices],
+            dtype=float,
+        )
+        zone_locations = np.array([clusters[index]["location"] for index in zone_cluster_indices], dtype=float)
+        solver_zones.append(
+            {
+                "id": f"zone_{zone_key[0]}_{zone_key[1]}",
+                "location": tuple(np.average(zone_locations, axis=0, weights=zone_weights)),
+                "employed_residents": zone_employment[zone_index],
+                "cluster_indices": zone_cluster_indices,
+            }
+        )
+    if len(clusters) != display_cluster_count:
+        raise ValueError("Adaptive clustering did not produce the requested point count")
+    if len({tuple(cluster["location"]) for cluster in clusters}) != len(clusters):
+        raise ValueError("Adaptive clustering produced duplicate coordinates")
+    return clusters, solver_zones
 
 
 def load_workplaces(path: Path) -> list[dict[str, object]]:
@@ -100,21 +209,22 @@ def load_workplaces(path: Path) -> list[dict[str, object]]:
     return workplaces
 
 
-def aggregate_workplaces_to_origins(
+def aggregate_workplaces_to_clusters(
     workplaces: list[dict[str, object]],
-    origins: list[dict[str, object]],
-) -> list[dict[str, object]]:
-    """Place rounded workplace capacity on the nearest census-derived demand zone."""
-    if not origins:
-        raise ValueError("Cannot aggregate workplaces without census-derived origins")
+    radios: list[dict[str, object]],
+    clusters: list[dict[str, object]],
+) -> np.ndarray:
+    """Assign rounded workplace capacity through the nearest census radio."""
+    if not radios or not clusters:
+        raise ValueError("Cannot aggregate workplaces without census radios and display clusters")
     mean_latitude = math.radians(
-        sum(float(origin["location"][1]) for origin in origins) / len(origins)
+        sum(float(radio["location"][1]) for radio in radios) / len(radios)
     )
     longitude_scale = math.cos(mean_latitude)
-    origin_locations = np.array(
+    radio_locations = np.array(
         [
-            (float(origin["location"][0]) * longitude_scale, float(origin["location"][1]))
-            for origin in origins
+            (float(radio["location"][0]) * longitude_scale, float(radio["location"][1]))
+            for radio in radios
         ],
         dtype=float,
     )
@@ -125,48 +235,16 @@ def aggregate_workplaces_to_origins(
         ],
         dtype=float,
     )
-    _, nearest_origins = cKDTree(origin_locations).query(workplace_locations, k=1)
-    capacities = np.bincount(
-        nearest_origins,
+    _, nearest_radios = cKDTree(radio_locations).query(workplace_locations, k=1)
+    nearest_clusters = np.array(
+        [int(radios[int(radio_index)]["cluster_index"]) for radio_index in nearest_radios],
+        dtype=np.int64,
+    )
+    return np.bincount(
+        nearest_clusters,
         weights=np.array([int(workplace["capacity"]) for workplace in workplaces], dtype=np.int64),
-        minlength=len(origins),
+        minlength=len(clusters),
     ).astype(np.int64)
-    return [
-        {
-            "id": f"workplace_{origin['id']}",
-            "cell_id": f"workplace_{origin['id']}",
-            "location": tuple(origin["location"]),
-            "capacity": int(capacity),
-        }
-        for origin, capacity in zip(origins, capacities)
-        if capacity > 0
-    ]
-
-
-def build_cells(workplaces: list[dict[str, object]]) -> tuple[list[dict[str, object]], dict[str, list[int]]]:
-    grouped: dict[str, dict[str, float]] = {}
-    workplaces_by_cell: dict[str, list[int]] = defaultdict(list)
-    for index, workplace in enumerate(workplaces):
-        cell_id = str(workplace["cell_id"])
-        location = workplace["location"]
-        capacity = float(workplace["capacity"])
-        group = grouped.setdefault(cell_id, {"capacity": 0.0, "weighted_lon": 0.0, "weighted_lat": 0.0})
-        group["capacity"] += capacity
-        group["weighted_lon"] += float(location[0]) * capacity
-        group["weighted_lat"] += float(location[1]) * capacity
-        workplaces_by_cell[cell_id].append(index)
-
-    cells = []
-    for cell_id, group in sorted(grouped.items()):
-        capacity = int(round(group["capacity"]))
-        cells.append(
-            {
-                "id": cell_id,
-                "location": (group["weighted_lon"] / group["capacity"], group["weighted_lat"] / group["capacity"]),
-                "capacity": capacity,
-            }
-        )
-    return cells, workplaces_by_cell
 
 
 def build_candidate_edges(
@@ -249,6 +327,7 @@ def solve_sparse_transport(
     cell_indices: np.ndarray,
     gravity_flows: np.ndarray,
     capacity_multiplier: float = 16.0,
+    flow_quantum: int = 10,
 ) -> np.ndarray:
     """Project a dense gravity matrix onto an exact sparse transportation vertex."""
     if int(origin_targets.sum()) != int(cell_targets.sum()):
@@ -258,11 +337,24 @@ def solve_sparse_transport(
 
     if capacity_multiplier < 1:
         raise ValueError("Sparse projection capacity multiplier must be at least 1")
+    if flow_quantum < 1:
+        raise ValueError("Sparse projection flow quantum must be at least 1")
 
     origin_count = len(origin_targets)
     cell_count = len(cell_targets)
     sink = 1 + origin_count + cell_count
-    edge_capacities = np.ceil(gravity_flows * capacity_multiplier).astype(np.int64)
+    lower_flows = (np.floor(gravity_flows / flow_quantum) * flow_quantum).astype(np.int64)
+    lower_origin_totals = np.bincount(origin_indices, weights=lower_flows, minlength=origin_count).astype(np.int64)
+    lower_cell_totals = np.bincount(cell_indices, weights=lower_flows, minlength=cell_count).astype(np.int64)
+    residual_origin_targets = origin_targets - lower_origin_totals
+    residual_cell_targets = cell_targets - lower_cell_totals
+    if np.any(residual_origin_targets < 0) or np.any(residual_cell_targets < 0):
+        raise ValueError("Sparse projection lower flows exceed a marginal")
+    if int(residual_origin_targets.sum()) == 0:
+        return lower_flows
+    edge_capacities = (
+        np.ceil(gravity_flows * capacity_multiplier).astype(np.int64) - lower_flows
+    )
     graph_rows = np.concatenate(
         (
             np.zeros(origin_count, dtype=np.int64),
@@ -277,13 +369,15 @@ def solve_sparse_transport(
             np.full(cell_count, sink, dtype=np.int64),
         )
     )
-    graph_capacities = np.concatenate((origin_targets, edge_capacities, cell_targets))
+    graph_capacities = np.concatenate(
+        (residual_origin_targets, edge_capacities, residual_cell_targets)
+    )
     capacity_graph = coo_matrix(
         (graph_capacities, (graph_rows, graph_columns)),
         shape=(sink + 1, sink + 1),
     ).tocsr()
     feasible = maximum_flow(capacity_graph, 0, sink)
-    if int(feasible.flow_value) != int(origin_targets.sum()):
+    if int(feasible.flow_value) != int(residual_origin_targets.sum()):
         raise ValueError(
             "Sparse gravity projection failed: gravity-bounded support cannot carry all formal jobs"
         )
@@ -313,7 +407,7 @@ def solve_sparse_transport(
         (np.ones(len(support_indices) * 2), (constraint_rows, constraint_columns)),
         shape=(origin_count + cell_count, len(support_indices)),
     ).tocsr()
-    margins = np.concatenate((origin_targets, cell_targets)).astype(float)
+    margins = np.concatenate((residual_origin_targets, residual_cell_targets)).astype(float)
 
     probabilities = support_gravity / origin_targets[support_origins]
     costs = -np.log(np.maximum(probabilities, np.finfo(float).tiny))
@@ -332,8 +426,8 @@ def solve_sparse_transport(
     rounded = np.rint(result.x)
     if float(np.max(np.abs(result.x - rounded), initial=0.0)) > 1e-5:
         raise ValueError("Sparse gravity projection returned non-integral flows")
-    sparse_flows = np.zeros(len(gravity_flows), dtype=np.int64)
-    sparse_flows[support_edges] = rounded.astype(np.int64)
+    sparse_flows = lower_flows.copy()
+    sparse_flows[support_edges] += rounded.astype(np.int64)
     assigned_origins = np.bincount(origin_indices, weights=sparse_flows, minlength=len(origin_targets)).astype(np.int64)
     assigned_cells = np.bincount(cell_indices, weights=sparse_flows, minlength=len(cell_targets)).astype(np.int64)
     if not np.array_equal(assigned_origins, origin_targets) or not np.array_equal(assigned_cells, cell_targets):
@@ -369,6 +463,80 @@ def allocate_cell_flows(
             workplace_index += 1
     if origin_index != len(origins) or workplace_index != len(workplaces):
         raise ValueError("Cell allocation ended with unassigned demand")
+    return assignments
+
+
+def build_destination_zones(
+    solver_zones: list[dict[str, object]],
+    cluster_capacities: np.ndarray,
+) -> tuple[list[dict[str, object]], dict[int, int]]:
+    destinations: list[dict[str, object]] = []
+    destination_index_by_zone: dict[int, int] = {}
+    for zone_index, zone in enumerate(solver_zones):
+        capacity = int(sum(cluster_capacities[index] for index in zone["cluster_indices"]))
+        if not capacity:
+            continue
+        destination_index_by_zone[zone_index] = len(destinations)
+        destinations.append(
+            {
+                "id": f"destination_{zone['id']}",
+                "location": tuple(zone["location"]),
+                "capacity": capacity,
+                "zone_index": zone_index,
+            }
+        )
+    return destinations, destination_index_by_zone
+
+
+def disaggregate_zone_flows(
+    sparse_flows: np.ndarray,
+    origin_indices: np.ndarray,
+    destination_indices: np.ndarray,
+    solver_zones: list[dict[str, object]],
+    destination_zones: list[dict[str, object]],
+    cluster_origin_targets: np.ndarray,
+    cluster_capacities: np.ndarray,
+) -> list[tuple[int, int, int]]:
+    outgoing_by_zone: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for edge_index in np.flatnonzero(sparse_flows):
+        outgoing_by_zone[int(origin_indices[edge_index])].append(
+            (int(destination_indices[edge_index]), int(sparse_flows[edge_index]))
+        )
+
+    incoming_segments: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for zone_index, outgoing in outgoing_by_zone.items():
+        origin_clusters = [
+            (int(cluster_index), int(cluster_origin_targets[cluster_index]))
+            for cluster_index in solver_zones[zone_index]["cluster_indices"]
+            if cluster_origin_targets[cluster_index]
+        ]
+        for cluster_index, destination_index, size in allocate_cell_flows(origin_clusters, outgoing):
+            incoming_segments[destination_index].append((cluster_index, size))
+
+    assignments: list[tuple[int, int, int]] = []
+    for destination_index, segments in incoming_segments.items():
+        zone_index = int(destination_zones[destination_index]["zone_index"])
+        destination_clusters = [
+            (int(cluster_index), int(cluster_capacities[cluster_index]))
+            for cluster_index in solver_zones[zone_index]["cluster_indices"]
+            if cluster_capacities[cluster_index]
+        ]
+        assignments.extend(allocate_cell_flows(segments, destination_clusters))
+
+    assigned_origins = np.bincount(
+        [origin for origin, _, _ in assignments],
+        weights=[size for _, _, size in assignments],
+        minlength=len(cluster_origin_targets),
+    ).astype(np.int64)
+    assigned_destinations = np.bincount(
+        [destination for _, destination, _ in assignments],
+        weights=[size for _, _, size in assignments],
+        minlength=len(cluster_capacities),
+    ).astype(np.int64)
+    if not np.array_equal(assigned_origins, cluster_origin_targets):
+        raise ValueError("Disaggregated origin-cluster totals do not reconcile")
+    if not np.array_equal(assigned_destinations, cluster_capacities):
+        raise ValueError("Disaggregated destination-cluster totals do not reconcile")
     return assignments
 
 
@@ -477,17 +645,38 @@ def build_demand_report(
     sparse_flows: np.ndarray,
     origin_indices: np.ndarray,
     cell_indices: np.ndarray,
-    origins: list[dict[str, object]],
-    cells: list[dict[str, object]],
+    solver_origins: list[dict[str, object]],
+    destination_zones: list[dict[str, object]],
+    display_clusters: list[dict[str, object]],
+    formal_assignments: list[tuple[int, int, int]],
     employed_total: int,
     formal_total: int,
 ) -> dict[str, object]:
     dense_distances = np.array(
-        [distance_km(origins[int(i)]["location"], cells[int(j)]["location"]) for i, j in zip(origin_indices, cell_indices)]
+        [
+            distance_km(
+                solver_origins[int(i)]["location"],
+                destination_zones[int(j)]["location"],
+            )
+            for i, j in zip(origin_indices, cell_indices)
+        ]
     )
-    formal_distances = np.array([pop["drivingDistance"] / 1000 for pop in demand["pops"] if pop["drivingDistance"]])
-    formal_sizes = np.array([pop["size"] for pop in demand["pops"] if pop["drivingDistance"]], dtype=np.int64)
+    formal_distances = np.array(
+        [
+            distance_km(
+                display_clusters[origin_index]["location"],
+                display_clusters[destination_index]["location"],
+            )
+            for origin_index, destination_index, _ in formal_assignments
+        ]
+    )
+    formal_sizes = np.array([size for _, _, size in formal_assignments], dtype=np.int64)
     population_sizes = np.array([pop["size"] for pop in demand["pops"]], dtype=np.int64)
+    radio_counts = np.array([int(cluster["radio_count"]) for cluster in display_clusters], dtype=np.int64)
+    cluster_employment = np.array(
+        [int(cluster["employed_residents"]) for cluster in display_clusters],
+        dtype=np.int64,
+    )
     dense_mean = float(np.dot(dense_distances, dense_flows) / formal_total)
     formal_mean = float(np.dot(formal_distances, formal_sizes) / formal_sizes.sum()) if len(formal_sizes) else 0.0
     return {
@@ -499,13 +688,14 @@ def build_demand_report(
         "model": {
             "dense_candidate_edges": len(dense_flows),
             "dense_positive_edges": int(np.count_nonzero(dense_flows)),
-            "sparse_cell_flows": int(np.count_nonzero(sparse_flows)),
+            "solver_zones": len(solver_origins),
+            "sparse_zone_flows": int(np.count_nonzero(sparse_flows)),
             "dense_formal_mean_km": dense_mean,
             "dense_formal_p90_km": weighted_percentile(dense_distances, dense_flows, 0.9),
-            "sparse_formal_mean_km": formal_mean,
-            "sparse_formal_p50_km": weighted_percentile(formal_distances, formal_sizes, 0.5),
-            "sparse_formal_p90_km": weighted_percentile(formal_distances, formal_sizes, 0.9),
-            "sparse_formal_max_km": float(formal_distances.max(initial=0.0)),
+            "exported_formal_mean_km": formal_mean,
+            "exported_formal_p50_km": weighted_percentile(formal_distances, formal_sizes, 0.5),
+            "exported_formal_p90_km": weighted_percentile(formal_distances, formal_sizes, 0.9),
+            "exported_formal_max_km": float(formal_distances.max(initial=0.0)),
         },
         "output": {
             "points": len(demand["points"]),
@@ -519,6 +709,12 @@ def build_demand_report(
             "population_size_mean": float(population_sizes.mean()),
             "population_size_p90": float(np.percentile(population_sizes, 90)),
             "population_size_max": int(population_sizes.max(initial=0)),
+            "radios_per_cluster_median": float(np.median(radio_counts)),
+            "radios_per_cluster_p90": float(np.percentile(radio_counts, 90)),
+            "radios_per_cluster_max": int(radio_counts.max(initial=0)),
+            "employed_per_cluster_median": float(np.median(cluster_employment)),
+            "employed_per_cluster_p90": float(np.percentile(cluster_employment, 90)),
+            "employed_per_cluster_max": int(cluster_employment.max(initial=0)),
         },
     }
 
@@ -538,60 +734,87 @@ def main() -> None:
     maximum_population_size = int(demand_config["maximum_population_size"])
     maximum_population_count = int(demand_config["maximum_population_count"])
     projection_capacity_multiplier = float(demand_config["projection_capacity_multiplier"])
+    projection_flow_quantum = int(demand_config["projection_flow_quantum"])
     tolerance = float(demand_config["ipf_tolerance"])
     max_iterations = int(demand_config["ipf_max_iterations"])
-    origins = load_origins(args.areas, float(demand_config["origin_grid_degrees"]), config["bbox"])
+    display_cluster_count = int(demand_config["display_cluster_count"])
+    radios = load_census_radios(args.areas, float(demand_config["solver_zone_degrees"]))
+    display_clusters, solver_zones = build_adaptive_clusters(
+        radios,
+        display_cluster_count,
+        config["bbox"],
+    )
     native_workplaces = load_workplaces(args.workplaces)
-    workplaces = aggregate_workplaces_to_origins(native_workplaces, origins)
-    cells, workplaces_by_cell = build_cells(workplaces)
+    cluster_capacities = aggregate_workplaces_to_clusters(native_workplaces, radios, display_clusters)
+    destination_zones, _ = build_destination_zones(solver_zones, cluster_capacities)
 
-    employed_total = int(round(sum(float(origin["employed_residents"]) for origin in origins)))
-    formal_total = min(employed_total, int(sum(int(workplace["capacity"]) for workplace in workplaces)))
-    formal_origin_targets = integerize(
-        np.array([float(origin["employed_residents"]) for origin in origins]) * formal_total / employed_total,
+    employed_targets = np.array(
+        [int(cluster["employed_residents"]) for cluster in display_clusters],
+        dtype=np.int64,
+    )
+    employed_total = int(employed_targets.sum())
+    formal_total = min(employed_total, int(cluster_capacities.sum()))
+    cluster_formal_targets = integerize(
+        employed_targets.astype(float) * formal_total / employed_total,
         formal_total,
     )
-    cell_targets = np.array([int(cell["capacity"]) for cell in cells], dtype=np.int64)
-    origin_indices, cell_indices, base_weights = build_candidate_edges(origins, cells, decay, candidate_count)
+    solver_origin_targets = np.bincount(
+        [int(cluster["zone_index"]) for cluster in display_clusters],
+        weights=cluster_formal_targets,
+        minlength=len(solver_zones),
+    ).astype(np.int64)
+    destination_targets = np.array(
+        [int(destination["capacity"]) for destination in destination_zones],
+        dtype=np.int64,
+    )
+    origin_indices, destination_indices, base_weights = build_candidate_edges(
+        solver_zones,
+        destination_zones,
+        decay,
+        candidate_count,
+    )
     balanced = balance_flows(
-        formal_origin_targets,
-        cell_targets,
+        solver_origin_targets,
+        destination_targets,
         origin_indices,
-        cell_indices,
+        destination_indices,
         base_weights,
         tolerance,
         max_iterations,
     )
     sparse_flows = solve_sparse_transport(
-        formal_origin_targets,
-        cell_targets,
+        solver_origin_targets,
+        destination_targets,
         origin_indices,
-        cell_indices,
+        destination_indices,
         balanced,
         projection_capacity_multiplier,
+        projection_flow_quantum,
     )
-    employed_targets = np.array([int(round(float(origin["employed_residents"]))) for origin in origins], dtype=np.int64)
-    residual_targets = employed_targets - formal_origin_targets
+    residual_targets = employed_targets - cluster_formal_targets
     if np.any(residual_targets < 0) or int(residual_targets.sum()) != employed_total - formal_total:
         raise ValueError("Could not reconcile local residual employment")
 
-    edges_by_cell: dict[int, list[int]] = defaultdict(list)
-    for edge_index, flow in enumerate(sparse_flows):
-        if flow:
-            edges_by_cell[int(cell_indices[edge_index])].append(edge_index)
-
-    formal_assignments: list[tuple[int, int, int]] = []
-    for cell_index, edge_indices in edges_by_cell.items():
-        workplace_indices = workplaces_by_cell[str(cells[cell_index]["id"])]
-        formal_assignments.extend(
-            allocate_cell_flows(
-                [(int(origin_indices[edge_index]), int(sparse_flows[edge_index])) for edge_index in edge_indices],
-                [(workplace_index, int(workplaces[workplace_index]["capacity"])) for workplace_index in workplace_indices],
-            )
-        )
+    formal_assignments = disaggregate_zone_flows(
+        sparse_flows,
+        origin_indices,
+        destination_indices,
+        solver_zones,
+        destination_zones,
+        cluster_formal_targets,
+        cluster_capacities,
+    )
+    workplaces = [
+        {
+            "id": f"workplace_{cluster['id']}",
+            "location": tuple(cluster["location"]),
+            "capacity": int(cluster_capacities[index]),
+        }
+        for index, cluster in enumerate(display_clusters)
+    ]
 
     demand = build_output_demand(
-        origins,
+        display_clusters,
         workplaces,
         formal_assignments,
         residual_targets,
@@ -614,16 +837,18 @@ def main() -> None:
         balanced,
         sparse_flows,
         origin_indices,
-        cell_indices,
-        origins,
-        cells,
+        destination_indices,
+        solver_zones,
+        destination_zones,
+        display_clusters,
+        formal_assignments,
         employed_total,
         formal_total,
     )
     report["output"]["demand_json_bytes"] = args.output.stat().st_size
     (args.output.parent / "demand_report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
-        f"Generated {len(demand['points'])} census-derived points and {len(demand['pops'])} populations; "
+        f"Generated {len(demand['points'])} adaptive census points and {len(demand['pops'])} populations; "
         f"formal jobs {formal_total}, local residual {employed_total - formal_total}"
     )
 

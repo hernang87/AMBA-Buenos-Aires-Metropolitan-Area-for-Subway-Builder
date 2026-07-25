@@ -13,6 +13,7 @@ def validate_demand(
     maximum_population_size: int,
     maximum_population_count: int,
     allowed_job_locations: set[tuple[float, float]] | None = None,
+    expected_point_count: int | None = None,
 ) -> dict[str, int]:
     bbox = config.get("bbox")
     if not isinstance(bbox, list) or len(bbox) != 4 or bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
@@ -23,6 +24,8 @@ def validate_demand(
         raise ValueError("Demand data is empty")
     if len(populations) > maximum_population_count:
         raise ValueError(f"Population count exceeds {maximum_population_count}: {len(populations)}")
+    if expected_point_count is not None and len(point_list) != expected_point_count:
+        raise ValueError(f"Demand point count must be {expected_point_count}: {len(point_list)}")
 
     points = {point["id"]: point for point in point_list}
     if len(points) != len(point_list):
@@ -84,17 +87,31 @@ def validate_demand(
     return {"points": len(points), "populations": len(populations), "population": resident_total}
 
 
-def validate_report(report: dict, maximum_population_count: int) -> None:
+def validate_report(
+    report: dict,
+    maximum_population_count: int,
+    expected_point_count: int | None = None,
+) -> None:
     model = report.get("model", {})
     output = report.get("output", {})
     if output.get("duplicate_coordinates") != 0:
         raise ValueError("Demand report contains duplicate coordinates")
     if output.get("populations", maximum_population_count + 1) > maximum_population_count:
         raise ValueError(f"Demand report population count exceeds {maximum_population_count}")
-    if model.get("sparse_formal_mean_km", float("inf")) > model.get("dense_formal_mean_km", 0) + 2:
-        raise ValueError("Sparse formal mean commute drift exceeds 2 km")
-    if model.get("sparse_formal_p90_km", float("inf")) > model.get("dense_formal_p90_km", 0) + 5:
-        raise ValueError("Sparse formal p90 commute drift exceeds 5 km")
+    if expected_point_count is not None and output.get("points") != expected_point_count:
+        raise ValueError(f"Demand report point count must be {expected_point_count}")
+    if output.get("points", 0) <= model.get("solver_zones", 0) * 3:
+        raise ValueError("Display clusters are not sufficiently denser than solver zones")
+    if abs(
+        model.get("exported_formal_mean_km", float("inf"))
+        - model.get("dense_formal_mean_km", 0)
+    ) > 2:
+        raise ValueError("Exported formal mean commute drift exceeds 2 km")
+    if abs(
+        model.get("exported_formal_p90_km", float("inf"))
+        - model.get("dense_formal_p90_km", 0)
+    ) > 5:
+        raise ValueError("Exported formal p90 commute drift exceeds 5 km")
 
 
 def main() -> None:
@@ -122,6 +139,7 @@ def main() -> None:
         for point in demand["points"]
         if str(point["id"]).startswith("origin_")
     }
+    expected_point_count = int(source_config["demand"]["display_cluster_count"])
     try:
         summary = validate_demand(
             config,
@@ -129,8 +147,13 @@ def main() -> None:
             int(source_config["demand"]["maximum_population_size"]),
             int(source_config["demand"]["maximum_population_count"]),
             allowed_job_locations,
+            expected_point_count,
         )
-        validate_report(report, int(source_config["demand"]["maximum_population_count"]))
+        validate_report(
+            report,
+            int(source_config["demand"]["maximum_population_count"]),
+            expected_point_count,
+        )
     except ValueError as error:
         raise SystemExit(str(error)) from error
     print(
