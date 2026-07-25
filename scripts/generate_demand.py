@@ -11,6 +11,7 @@ import numpy as np
 from scipy.optimize import linprog
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import maximum_flow
+from scipy.spatial import cKDTree
 from shapely.geometry import shape
 
 
@@ -97,6 +98,49 @@ def load_workplaces(path: Path) -> list[dict[str, object]]:
     for workplace, capacity in zip(workplaces, capacities):
         workplace["capacity"] = int(capacity)
     return workplaces
+
+
+def aggregate_workplaces_to_origins(
+    workplaces: list[dict[str, object]],
+    origins: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Place rounded workplace capacity on the nearest census-derived demand zone."""
+    if not origins:
+        raise ValueError("Cannot aggregate workplaces without census-derived origins")
+    mean_latitude = math.radians(
+        sum(float(origin["location"][1]) for origin in origins) / len(origins)
+    )
+    longitude_scale = math.cos(mean_latitude)
+    origin_locations = np.array(
+        [
+            (float(origin["location"][0]) * longitude_scale, float(origin["location"][1]))
+            for origin in origins
+        ],
+        dtype=float,
+    )
+    workplace_locations = np.array(
+        [
+            (float(workplace["location"][0]) * longitude_scale, float(workplace["location"][1]))
+            for workplace in workplaces
+        ],
+        dtype=float,
+    )
+    _, nearest_origins = cKDTree(origin_locations).query(workplace_locations, k=1)
+    capacities = np.bincount(
+        nearest_origins,
+        weights=np.array([int(workplace["capacity"]) for workplace in workplaces], dtype=np.int64),
+        minlength=len(origins),
+    ).astype(np.int64)
+    return [
+        {
+            "id": f"workplace_{origin['id']}",
+            "cell_id": f"workplace_{origin['id']}",
+            "location": tuple(origin["location"]),
+            "capacity": int(capacity),
+        }
+        for origin, capacity in zip(origins, capacities)
+        if capacity > 0
+    ]
 
 
 def build_cells(workplaces: list[dict[str, object]]) -> tuple[list[dict[str, object]], dict[str, list[int]]]:
@@ -497,7 +541,8 @@ def main() -> None:
     tolerance = float(demand_config["ipf_tolerance"])
     max_iterations = int(demand_config["ipf_max_iterations"])
     origins = load_origins(args.areas, float(demand_config["origin_grid_degrees"]), config["bbox"])
-    workplaces = load_workplaces(args.workplaces)
+    native_workplaces = load_workplaces(args.workplaces)
+    workplaces = aggregate_workplaces_to_origins(native_workplaces, origins)
     cells, workplaces_by_cell = build_cells(workplaces)
 
     employed_total = int(round(sum(float(origin["employed_residents"]) for origin in origins)))
@@ -578,7 +623,7 @@ def main() -> None:
     report["output"]["demand_json_bytes"] = args.output.stat().st_size
     (args.output.parent / "demand_report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
-        f"Generated {len(demand['points'])} native-coordinate points and {len(demand['pops'])} populations; "
+        f"Generated {len(demand['points'])} census-derived points and {len(demand['pops'])} populations; "
         f"formal jobs {formal_total}, local residual {employed_total - formal_total}"
     )
 

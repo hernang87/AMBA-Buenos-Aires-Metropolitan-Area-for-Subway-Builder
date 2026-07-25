@@ -3,11 +3,37 @@ import unittest
 import numpy as np
 
 from scripts.generate_demand import (
+    aggregate_workplaces_to_origins,
     allocate_cell_flows,
     build_demand_report,
     build_output_demand,
     solve_sparse_transport,
 )
+
+
+class WorkplaceAggregationTests(unittest.TestCase):
+    def test_aggregates_capacity_to_nearest_census_derived_origin(self):
+        origins = [
+            {"id": "west", "location": (-58.50, -34.60)},
+            {"id": "east", "location": (-58.40, -34.60)},
+        ]
+        workplaces = [
+            {"location": (-58.49, -34.60), "capacity": 100},
+            {"location": (-58.48, -34.60), "capacity": 50},
+            {"location": (-58.41, -34.60), "capacity": 75},
+        ]
+
+        aggregated = aggregate_workplaces_to_origins(workplaces, origins)
+
+        self.assertEqual([150, 75], [workplace["capacity"] for workplace in aggregated])
+        self.assertEqual(
+            [(-58.50, -34.60), (-58.40, -34.60)],
+            [workplace["location"] for workplace in aggregated],
+        )
+
+    def test_rejects_aggregation_without_origins(self):
+        with self.assertRaisesRegex(ValueError, "without census-derived origins"):
+            aggregate_workplaces_to_origins([{"location": (0.0, 0.0), "capacity": 1}], [])
 
 
 class SparseTransportTests(unittest.TestCase):

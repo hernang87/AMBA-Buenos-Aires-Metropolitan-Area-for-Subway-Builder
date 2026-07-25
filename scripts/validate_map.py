@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -13,7 +12,7 @@ def validate_demand(
     demand: dict,
     maximum_population_size: int,
     maximum_population_count: int,
-    native_workplace_locations: set[tuple[float, float]] | None = None,
+    allowed_job_locations: set[tuple[float, float]] | None = None,
 ) -> dict[str, int]:
     bbox = config.get("bbox")
     if not isinstance(bbox, list) or len(bbox) != 4 or bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
@@ -31,11 +30,15 @@ def validate_demand(
     coordinates = [tuple(point["location"]) for point in point_list]
     if len(coordinates) != len(set(coordinates)):
         raise ValueError("Duplicate demand point coordinate")
-    if native_workplace_locations is not None:
-        missing_workplaces = native_workplace_locations - set(coordinates)
-        if missing_workplaces:
-            location = min(missing_workplaces)
-            raise ValueError(f"Native workplace coordinate is missing: {location}")
+    if allowed_job_locations is not None:
+        invalid_job_locations = {
+            tuple(point["location"])
+            for point in point_list
+            if point["jobs"] and tuple(point["location"]) not in allowed_job_locations
+        }
+        if invalid_job_locations:
+            location = min(invalid_job_locations)
+            raise ValueError(f"Job coordinate is not a census-derived demand zone: {location}")
 
     populations_by_id = {pop["id"]: pop for pop in populations}
     if len(populations_by_id) != len(populations):
@@ -114,18 +117,18 @@ def main() -> None:
         raise SystemExit(f"Missing map files: {', '.join(missing)}")
     if config.get("code") != "AMBA":
         raise SystemExit("config.json must use code AMBA")
-    with (ROOT / "data/processed/workplaces.csv").open(newline="", encoding="utf-8") as handle:
-        native_workplace_locations = {
-            (float(row["longitude"]), float(row["latitude"]))
-            for row in csv.DictReader(handle)
-        }
+    allowed_job_locations = {
+        tuple(point["location"])
+        for point in demand["points"]
+        if str(point["id"]).startswith("origin_")
+    }
     try:
         summary = validate_demand(
             config,
             demand,
             int(source_config["demand"]["maximum_population_size"]),
             int(source_config["demand"]["maximum_population_count"]),
-            native_workplace_locations,
+            allowed_job_locations,
         )
         validate_report(report, int(source_config["demand"]["maximum_population_count"]))
     except ValueError as error:

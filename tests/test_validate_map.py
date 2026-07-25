@@ -40,7 +40,7 @@ class DemandValidationTests(unittest.TestCase):
             demand,
             maximum_population_size=200,
             maximum_population_count=3,
-            native_workplace_locations={(0.5, 0.5)},
+            allowed_job_locations={(0.5, 0.5)},
         )
 
         self.assertEqual({"points": 2, "populations": 3, "population": 500}, summary)
@@ -82,16 +82,16 @@ class DemandValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Population size exceeds 200"):
             validate_demand(config, demand, maximum_population_size=200, maximum_population_count=3)
 
-    def test_rejects_a_missing_native_workplace_coordinate(self):
+    def test_rejects_a_job_outside_census_derived_demand_zones(self):
         config, demand = valid_fixture()
 
-        with self.assertRaisesRegex(ValueError, "Native workplace coordinate is missing"):
+        with self.assertRaisesRegex(ValueError, "not a census-derived demand zone"):
             validate_demand(
                 config,
                 demand,
                 maximum_population_size=200,
                 maximum_population_count=3,
-                native_workplace_locations={(0.75, 0.75)},
+                allowed_job_locations={(0.75, 0.75)},
             )
 
 
