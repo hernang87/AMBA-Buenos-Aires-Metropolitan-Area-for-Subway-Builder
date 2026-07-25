@@ -12,7 +12,14 @@ The merged registry listing also assigns city code `BUE`, while the package used
 
 ## Decision
 
-Use Depot v1.2.3's native building pipeline with a fresh Overture download, its default 40 m² minimum footprint area, 1 m simplification, 12 GB processing limit, and foundations disabled. Remove all custom OSM building extraction and building-index/tile overrides.
+Query the current Overture release for the full bounding box and apply Depot's
+default 40 m² minimum footprint area before materializing GeoJSON. Export only
+geometry and height, then use Depot v1.2.3's native building cleanup, indexes,
+and tile generation with an 8 GB processing limit and foundations disabled.
+Remove all custom OSM building extraction and building-index/tile overrides.
+Explode cleaned multipart geometry before invoking Depot's JSON and binary
+converters because v1.2.3 otherwise counts every part in JSON but only the
+largest part in binary.
 
 Use `BUE` for the Depot city, output directory, packaged config code, PMTiles filename, and generated city assets. Retain `amba` only for the existing registry map ID and lowercase release archive name.
 
@@ -29,7 +36,7 @@ The release validator requires matching JSON and binary building counts greater 
 
 ### Negative
 
-- The Overture download and full building build require substantial time, disk, and memory.
+- The Overture download and full building build require substantial time and disk.
 - The packaged building indexes and PMTiles will be larger.
 
 ### Neutral

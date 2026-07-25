@@ -8,9 +8,9 @@ Reproducible build pipeline for an Área Metropolitana de Buenos Aires map for S
 - An INDEC RMBA census-area GeoJSON file.
 - A UTF-8 CSV containing `area_id,population,jobs` for the same census areas. `population` is total residents and `jobs` is employed residents used as demand producers.
 - The official CEP XXI geocoded formal-workplace CSV, downloaded by `fetch_workplace_data.py`.
-- Overture building footprints, fetched directly by Depot during the map build.
+- Overture building footprints, queried during the map build and processed by Depot.
 
-The census CSV is intentionally an input rather than checked-in data; record its exact INDEC source in `data/SOURCES.md`. Building processing uses Depot's native Overture pipeline and its default 40 m² footprint filter.
+The census CSV is intentionally an input rather than checked-in data; record its exact INDEC source in `data/SOURCES.md`. The build applies Depot's 40 m² footprint threshold at the Overture query, strips unused attributes, and caps Mapshaper at 8 GB before Depot creates its native indexes and tiles.
 
 ## Setup
 

@@ -40,4 +40,4 @@ Exported job points use employed-resident-weighted adaptive census-cluster coord
 
 ### Overture buildings
 
-Depot v1.2.3 queries the latest Overture Maps building release directly for the configured bounding box. The v0.3.0 build uses Depot's native processing with a fresh download, 40 m² minimum footprint area, and 1 m simplification. OSM building tags are not substituted for this source.
+The build queries the latest Overture Maps building release directly for the configured bounding box. The v0.3.0 build applies Depot v1.2.3's 40 m² minimum footprint threshold before materialization, exports only geometry and height, then uses Depot's 1 m simplification, native indexes, and tile generation with an 8 GB Mapshaper cap. Multipart footprints are exploded before indexing so JSON and binary counts reconcile. OSM building tags are not substituted for this source.
