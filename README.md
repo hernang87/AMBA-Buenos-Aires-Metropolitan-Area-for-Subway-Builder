@@ -4,12 +4,13 @@ Reproducible build pipeline for an Área Metropolitana de Buenos Aires map for S
 
 ## Inputs
 
-- `argentina-latest.osm.pbf` at the repository root, or another Argentina OSM PBF.
+- `argentina-latest.osm.pbf` at the repository root, or another Argentina OSM PBF, for roads and geographic context.
 - An INDEC RMBA census-area GeoJSON file.
 - A UTF-8 CSV containing `area_id,population,jobs` for the same census areas. `population` is total residents and `jobs` is employed residents used as demand producers.
 - The official CEP XXI geocoded formal-workplace CSV, downloaded by `fetch_workplace_data.py`.
+- Overture building footprints, fetched directly by Depot during the map build.
 
-The census CSV is intentionally an input rather than checked-in data; record its exact INDEC source in `data/SOURCES.md`.
+The census CSV is intentionally an input rather than checked-in data; record its exact INDEC source in `data/SOURCES.md`. Building processing uses Depot's native Overture pipeline and its default 40 m² footprint filter.
 
 ## Setup
 

@@ -36,4 +36,8 @@ Exported job points use employed-resident-weighted adaptive census-cluster coord
 
 ## Existing local input
 
-`argentina-latest.osm.pbf` is the current local OSM extract used by default. Replace it with a newer extract when rebuilding and record its source date here.
+`argentina-latest.osm.pbf` is the current local OSM extract used by default for roads and geographic context. Replace it with a newer extract when rebuilding and record its source date here.
+
+### Overture buildings
+
+Depot v1.2.3 queries the latest Overture Maps building release directly for the configured bounding box. The v0.3.0 build uses Depot's native processing with a fresh download, 40 m² minimum footprint area, and 1 m simplification. OSM building tags are not substituted for this source.

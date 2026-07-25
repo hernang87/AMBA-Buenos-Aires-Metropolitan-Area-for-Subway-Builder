@@ -1,12 +1,37 @@
 from __future__ import annotations
 
 import json
+import struct
 from collections import defaultdict
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP = ROOT / "output/BUE"
+
+
+def validate_building_indexes(json_path: Path, binary_path: Path, minimum_count: int) -> int:
+    building_index = json.loads(json_path.read_text(encoding="utf-8"))
+    json_count = int(building_index.get("stats", {}).get("count", -1))
+    if json_count < 0:
+        json_count = len(building_index.get("buildings", []))
+    header = binary_path.read_bytes()[:12]
+    if len(header) < 12:
+        raise ValueError("Building binary index header is truncated")
+    magic, version, _, _, binary_count = struct.unpack("<IBBHI", header)
+    if magic != 0x49424253 or version != 1:
+        raise ValueError("Building binary index header is invalid")
+    if json_count != binary_count:
+        raise ValueError(
+            f"Building index counts do not reconcile: JSON={json_count}, binary={binary_count}"
+        )
+    if json_count <= minimum_count:
+        raise ValueError(
+            f"Building coverage did not improve beyond {minimum_count}: {json_count}"
+        )
+    return json_count
+
+
 def validate_demand(
     config: dict,
     demand: dict,
@@ -141,6 +166,11 @@ def main() -> None:
     }
     expected_point_count = int(source_config["demand"]["display_cluster_count"])
     try:
+        building_count = validate_building_indexes(
+            MAP / "buildings_index.json",
+            MAP / "buildings_index.bin",
+            minimum_count=177890,
+        )
         summary = validate_demand(
             config,
             demand,
@@ -158,7 +188,8 @@ def main() -> None:
         raise SystemExit(str(error)) from error
     print(
         f"Validated BUE: {summary['points']} points, "
-        f"{summary['populations']} populations, {summary['population']} employed residents"
+        f"{summary['populations']} populations, {summary['population']} employed residents, "
+        f"{building_count} buildings"
     )
 
 

@@ -1,6 +1,10 @@
 import unittest
+import json
+import struct
+import tempfile
+from pathlib import Path
 
-from scripts.validate_map import validate_demand, validate_report
+from scripts.validate_map import validate_building_indexes, validate_demand, validate_report
 
 
 def valid_fixture():
@@ -29,6 +33,29 @@ def valid_fixture():
         ],
     }
     return config, demand
+
+
+class BuildingIndexValidationTests(unittest.TestCase):
+    def test_accepts_matching_improved_building_indexes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            json_path = root / "buildings_index.json"
+            binary_path = root / "buildings_index.bin"
+            json_path.write_text(json.dumps({"stats": {"count": 200}}), encoding="utf-8")
+            binary_path.write_bytes(struct.pack("<IBBHI", 0x49424253, 1, 0, 0, 200))
+
+            self.assertEqual(200, validate_building_indexes(json_path, binary_path, 100))
+
+    def test_rejects_mismatched_building_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            json_path = root / "buildings_index.json"
+            binary_path = root / "buildings_index.bin"
+            json_path.write_text(json.dumps({"stats": {"count": 200}}), encoding="utf-8")
+            binary_path.write_bytes(struct.pack("<IBBHI", 0x49424253, 1, 0, 0, 199))
+
+            with self.assertRaisesRegex(ValueError, "do not reconcile"):
+                validate_building_indexes(json_path, binary_path, 100)
 
 
 class DemandValidationTests(unittest.TestCase):
