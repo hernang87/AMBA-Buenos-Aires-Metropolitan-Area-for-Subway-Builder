@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
 import struct
+import subprocess
 from collections import defaultdict
 from pathlib import Path
 
@@ -10,12 +12,34 @@ ROOT = Path(__file__).resolve().parents[1]
 MAP = ROOT / "output/BUE"
 
 
+def validate_pmtiles_metadata(metadata: dict) -> None:
+    layers = {layer["id"]: layer for layer in metadata.get("vector_layers", [])}
+    if any(name in layers for name in ("college", "university", "school")):
+        raise ValueError("PMTiles still contain legacy campus layers")
+    if layers.get("commercial", {}).get("fields", {}).get("type") != "String":
+        raise ValueError("PMTiles commercial layer is missing college type")
+    commercial_stats = next(
+        (
+            layer
+            for layer in metadata.get("tilestats", {}).get("layers", [])
+            if layer.get("layer") == "commercial"
+        ),
+        {},
+    )
+    if not any(
+        attribute.get("attribute") == "type" and "college" in attribute.get("values", [])
+        for attribute in commercial_stats.get("attributes", [])
+    ):
+        raise ValueError("PMTiles contain no college areas in the commercial layer")
+
+
 def validate_building_indexes(json_path: Path, binary_path: Path, minimum_count: int) -> int:
     building_index = json.loads(json_path.read_text(encoding="utf-8"))
     json_count = int(building_index.get("stats", {}).get("count", -1))
     if json_count < 0:
         json_count = len(building_index.get("buildings", []))
-    header = binary_path.read_bytes()[:12]
+    with binary_path.open("rb") as source:
+        header = source.read(12)
     if len(header) < 12:
         raise ValueError("Building binary index header is truncated")
     magic, version, _, _, binary_count = struct.unpack("<IBBHI", header)
@@ -79,6 +103,15 @@ def validate_demand(
     for pop in populations:
         if pop["residenceId"] not in points or pop["jobId"] not in points:
             raise ValueError(f"Invalid demand reference: {pop['id']}")
+        for field in ("drivingSeconds", "drivingDistance"):
+            value = pop.get(field)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(f"Invalid {field}: {pop['id']}")
         if pop["size"] <= 0:
             raise ValueError(f"Non-positive population size: {pop['id']}")
         if pop["size"] > maximum_population_size:
@@ -159,6 +192,8 @@ def main() -> None:
         raise SystemExit(f"Missing map files: {', '.join(missing)}")
     if config.get("code") != "BUE":
         raise SystemExit("config.json must use code BUE")
+    if config.get("version") != source_config["version"]:
+        raise SystemExit("config.json version does not match source version")
     allowed_job_locations = {
         tuple(point["location"])
         for point in demand["points"]
@@ -166,6 +201,13 @@ def main() -> None:
     }
     expected_point_count = int(source_config["demand"]["display_cluster_count"])
     try:
+        metadata = json.loads(
+            subprocess.check_output(
+                ["pmtiles", "show", "--metadata", str(MAP / "BUE.pmtiles")],
+                text=True,
+            )
+        )
+        validate_pmtiles_metadata(metadata)
         building_count = validate_building_indexes(
             MAP / "buildings_index.json",
             MAP / "buildings_index.bin",

@@ -4,7 +4,12 @@ import struct
 import tempfile
 from pathlib import Path
 
-from scripts.validate_map import validate_building_indexes, validate_demand, validate_report
+from scripts.validate_map import (
+    validate_building_indexes,
+    validate_demand,
+    validate_pmtiles_metadata,
+    validate_report,
+)
 
 
 def valid_fixture():
@@ -27,12 +32,31 @@ def valid_fixture():
             },
         ],
         "pops": [
-            {"id": "pop_0", "residenceId": "origin", "jobId": "job", "size": 200},
-            {"id": "pop_1", "residenceId": "origin", "jobId": "job", "size": 200},
-            {"id": "pop_2", "residenceId": "origin", "jobId": "job", "size": 100},
+            {"id": "pop_0", "residenceId": "origin", "jobId": "job", "size": 200,
+             "drivingSeconds": 900, "drivingDistance": 6000},
+            {"id": "pop_1", "residenceId": "origin", "jobId": "job", "size": 200,
+             "drivingSeconds": 900, "drivingDistance": 6000},
+            {"id": "pop_2", "residenceId": "origin", "jobId": "job", "size": 100,
+             "drivingSeconds": 900, "drivingDistance": 6000},
         ],
     }
     return config, demand
+
+
+class TileValidationTests(unittest.TestCase):
+    def test_requires_college_areas_in_the_game_commercial_layer(self):
+        metadata = {
+            "vector_layers": [{"id": "commercial", "fields": {"type": "String"}}],
+            "tilestats": {"layers": [
+                {"layer": "commercial", "attributes": [
+                    {"attribute": "type", "values": ["college"]},
+                ]},
+            ]},
+        }
+        validate_pmtiles_metadata(metadata)
+        metadata["vector_layers"].append({"id": "college", "fields": {}})
+        with self.assertRaisesRegex(ValueError, "legacy campus"):
+            validate_pmtiles_metadata(metadata)
 
 
 class BuildingIndexValidationTests(unittest.TestCase):
@@ -107,6 +131,13 @@ class DemandValidationTests(unittest.TestCase):
         demand["pops"][0]["size"] = 201
 
         with self.assertRaisesRegex(ValueError, "Population size exceeds 200"):
+            validate_demand(config, demand, maximum_population_size=200, maximum_population_count=3)
+
+    def test_rejects_missing_driving_estimate(self):
+        config, demand = valid_fixture()
+        del demand["pops"][0]["drivingSeconds"]
+
+        with self.assertRaisesRegex(ValueError, "Invalid drivingSeconds"):
             validate_demand(config, demand, maximum_population_size=200, maximum_population_count=3)
 
     def test_rejects_a_job_outside_census_derived_demand_zones(self):

@@ -20,7 +20,7 @@ Install Depot and its documented Python/CLI dependencies. The map generator requ
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -U pip
-python -m pip install numpy scipy shapely git+https://github.com/Subway-Builder-Modded/depot.git
+python -m pip install numpy scipy shapely git+https://github.com/Subway-Builder-Modded/depot.git@1.2.7
 ```
 
 Fetch and prepare the machine-readable inputs:
@@ -42,7 +42,9 @@ python scripts/validate_map.py
 python scripts/package_map.py
 ```
 
-The final archive is written to `output/amba.zip`. The registry map ID remains `amba`, while the packaged city code and PMTiles asset use `BUE`.
+The final archive is written to `output/amba.zip`. The registry map ID remains `amba`, while the packaged city code and PMTiles asset use `BUE`. The archive ships the binary building index required by current Subway Builder releases. Depot 1.2.7 puts college areas in the `commercial` tile layer with `type: college`, as the game expects.
+
+This is a map ZIP. The separate `manifest.json` release asset used by mods is not part of the map package.
 
 ## Demand model
 

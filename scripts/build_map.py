@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 os.environ.setdefault("MPLCONFIGDIR", str(ROOT / ".cache/matplotlib"))
 os.environ.setdefault("XDG_CACHE_HOME", str(ROOT / ".cache"))
 
-DEPOT_PATH = Path(os.environ.get("DEPOT_PATH", "~/dev/depot/src")).expanduser()
-sys.path.insert(0, str(DEPOT_PATH))
+if depot_path := os.environ.get("DEPOT_PATH"):
+    sys.path.insert(0, str(Path(depot_path).expanduser()))
 
 from depot.maps import MapGen
 
