@@ -44,7 +44,7 @@ python scripts/package_map.py
 
 The final archive is written to `output/amba.zip`. The registry map ID remains `amba`, while the packaged city code and PMTiles asset use `BUE`. The archive ships the binary building index required by current Subway Builder releases. Depot 1.2.7 puts college areas in the `commercial` tile layer with `type: college`, as the game expects.
 
-This is a map ZIP. The separate `manifest.json` release asset used by mods is not part of the map package.
+The release includes `output/amba.zip`, `output/amba.sha256`, and `output/manifest.json` as separate assets. The Registry reads the manifest's `subway-builder` dependency range for maps as well as mods. The manifest is not inside the map ZIP.
 
 ## Demand model
 

@@ -43,3 +43,5 @@ Exported job points use employed-resident-weighted adaptive census-cluster coord
 The build queries the latest Overture Maps building release directly for the configured bounding box. The v0.3.0 build applies Depot v1.2.3's 40 m² minimum footprint threshold before materialization, exports only geometry and height, then uses Depot's 1 m simplification, native indexes, and tile generation with an 8 GB Mapshaper cap. Multipart footprints are exploded before indexing so JSON and binary counts reconcile. OSM building tags are not substituted for this source.
 
 The v0.3.1 compatibility release reuses the v0.3.0 OSM, Overture 2026-07-22.0, census, and workplace inputs. It rebuilds the basemap tile translation from the retained `bue-clean.mbtiles` with Depot 1.2.7, preserving the building and demand data while moving college, university, and school polygons into the game's commercial tile layer.
+
+The v0.3.2 release changes only the map version and release metadata so the Registry can identify its Subway Builder compatibility range.

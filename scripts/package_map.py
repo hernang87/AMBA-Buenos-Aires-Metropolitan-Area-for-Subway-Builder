@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP = ROOT / "output/BUE"
+GAME_VERSION = ">=1.7.1"
 
 
 def validate_package_identity(output_config: dict, files: list[str], version: str) -> None:
@@ -44,6 +45,10 @@ def main() -> None:
     with archive.open("rb") as source:
         digest = hashlib.file_digest(source, "sha256").hexdigest()
     (ROOT / "output/amba.sha256").write_text(f"{digest}  amba.zip\n", encoding="utf-8")
+    (ROOT / "output/manifest.json").write_text(
+        json.dumps({"dependencies": {"subway-builder": GAME_VERSION}}, indent=2) + "\n",
+        encoding="utf-8",
+    )
     print(f"Packaged {archive} ({config['version']})")
 
 
