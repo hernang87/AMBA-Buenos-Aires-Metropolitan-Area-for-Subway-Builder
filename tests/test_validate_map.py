@@ -46,7 +46,11 @@ def valid_fixture():
 class TileValidationTests(unittest.TestCase):
     def test_requires_college_areas_in_the_game_commercial_layer(self):
         metadata = {
-            "vector_layers": [{"id": "commercial", "fields": {"type": "String"}}],
+            "vector_layers": [
+                {"id": "commercial", "fields": {"type": "String"}},
+                {"id": "parks", "fields": {"area": "Number"}},
+                {"id": "airports", "fields": {}},
+            ],
             "tilestats": {"layers": [
                 {"layer": "commercial", "attributes": [
                     {"attribute": "type", "values": ["college"]},
@@ -56,6 +60,9 @@ class TileValidationTests(unittest.TestCase):
         validate_pmtiles_metadata(metadata)
         metadata["vector_layers"].append({"id": "college", "fields": {}})
         with self.assertRaisesRegex(ValueError, "legacy campus"):
+            validate_pmtiles_metadata(metadata)
+        metadata["vector_layers"] = metadata["vector_layers"][:-2]
+        with self.assertRaisesRegex(ValueError, "airports layer"):
             validate_pmtiles_metadata(metadata)
 
 

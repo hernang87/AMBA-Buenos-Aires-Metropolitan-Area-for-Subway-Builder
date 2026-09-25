@@ -14,7 +14,7 @@ from scipy.optimize import linprog
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import maximum_flow
 from scipy.spatial import cKDTree
-from shapely.geometry import shape
+from shapely.geometry import Point, shape
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,15 +48,40 @@ def integerize(values: np.ndarray, total: int | None = None) -> np.ndarray:
     return floors
 
 
-def load_census_radios(path: Path, solver_zone_degrees: float) -> list[dict[str, object]]:
-    radios: list[dict[str, object]] = []
+def load_anchors(path: Path) -> dict[str, tuple[float, float]]:
+    anchors = {}
     with path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
-            location = representative_point(json.loads(row["geometry"]))
+            area_id = row["area_id"]
+            location = (float(row["longitude"]), float(row["latitude"]))
+            if area_id in anchors or not all(math.isfinite(value) for value in location):
+                raise ValueError(f"Invalid or duplicate census anchor: {area_id}")
+            anchors[area_id] = location
+    if not anchors:
+        raise ValueError("No CABA census anchors found")
+    return anchors
+
+
+def load_census_radios(
+    path: Path, solver_zone_degrees: float, anchors: dict[str, tuple[float, float]] | None = None
+) -> list[dict[str, object]]:
+    radios: list[dict[str, object]] = []
+    anchors = anchors or {}
+    used_anchors = set()
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            geometry = json.loads(row["geometry"])
+            location = representative_point(geometry)
+            display_location = anchors.get(row["area_id"], location)
+            if row["area_id"] in anchors:
+                if not shape(geometry).covers(Point(display_location)):
+                    raise ValueError(f"Census anchor is outside its radio: {row['area_id']}")
+                used_anchors.add(row["area_id"])
             radios.append(
                 {
                     "id": row["area_id"],
                     "location": location,
+                    "display_location": display_location,
                     "employed_residents": int(round(float(row["jobs"]))),
                     "zone_key": (
                         math.floor(location[0] / solver_zone_degrees),
@@ -66,6 +91,8 @@ def load_census_radios(path: Path, solver_zone_degrees: float) -> list[dict[str,
             )
     if not radios:
         raise ValueError("No prepared census areas found")
+    if used_anchors != anchors.keys():
+        raise ValueError("Census anchors contain unknown radio identifiers")
     return radios
 
 
@@ -151,16 +178,24 @@ def build_adaptive_clusters(
                 [max(int(radios[index]["employed_residents"]), 1) for index in member_indices],
                 dtype=float,
             )
-            member_locations = np.array([radios[index]["location"] for index in member_indices], dtype=float)
+            member_locations = np.array(
+                [radios[index].get("display_location", radios[index]["location"]) for index in member_indices],
+                dtype=float,
+            )
+            model_locations = np.array([radios[index]["location"] for index in member_indices], dtype=float)
             cluster_index = len(clusters)
             longitude, latitude = np.average(member_locations, axis=0, weights=weights)
+            model_longitude, model_latitude = np.average(model_locations, axis=0, weights=weights)
             if bbox is not None:
                 west, south, east, north = bbox
                 longitude = min(max(float(longitude), west), east)
                 latitude = min(max(float(latitude), south), north)
+                model_longitude = min(max(float(model_longitude), west), east)
+                model_latitude = min(max(float(model_latitude), south), north)
             cluster = {
                 "id": f"origin_{cluster_index:05d}",
                 "location": (float(longitude), float(latitude)),
+                "model_location": (float(model_longitude), float(model_latitude)),
                 "employed_residents": sum(int(radios[index]["employed_residents"]) for index in member_indices),
                 "radio_count": len(member_indices),
                 "zone_index": zone_index,
@@ -173,7 +208,7 @@ def build_adaptive_clusters(
             [max(int(clusters[index]["employed_residents"]), 1) for index in zone_cluster_indices],
             dtype=float,
         )
-        zone_locations = np.array([clusters[index]["location"] for index in zone_cluster_indices], dtype=float)
+        zone_locations = np.array([clusters[index]["model_location"] for index in zone_cluster_indices], dtype=float)
         solver_zones.append(
             {
                 "id": f"zone_{zone_key[0]}_{zone_key[1]}",
@@ -723,6 +758,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--areas", type=Path, default=ROOT / "data/processed/areas.csv")
     parser.add_argument("--workplaces", type=Path, default=ROOT / "data/processed/workplaces.csv")
+    parser.add_argument("--anchors", type=Path, default=ROOT / "data/processed/caba_anchors.csv")
     parser.add_argument("--config", type=Path, default=ROOT / "config/bue.json")
     parser.add_argument("--output", type=Path, default=ROOT / "output/BUE/demand_data.json")
     args = parser.parse_args()
@@ -738,7 +774,8 @@ def main() -> None:
     tolerance = float(demand_config["ipf_tolerance"])
     max_iterations = int(demand_config["ipf_max_iterations"])
     display_cluster_count = int(demand_config["display_cluster_count"])
-    radios = load_census_radios(args.areas, float(demand_config["solver_zone_degrees"]))
+    anchors = load_anchors(args.anchors)
+    radios = load_census_radios(args.areas, float(demand_config["solver_zone_degrees"]), anchors)
     display_clusters, solver_zones = build_adaptive_clusters(
         radios,
         display_cluster_count,
@@ -846,6 +883,7 @@ def main() -> None:
         formal_total,
     )
     report["output"]["demand_json_bytes"] = args.output.stat().st_size
+    report["output"]["caba_anchored_radios"] = len(anchors)
     (args.output.parent / "demand_report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
         f"Generated {len(demand['points'])} adaptive census points and {len(demand['pops'])} populations; "

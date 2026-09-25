@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
+import zlib
 from pathlib import Path
 
 import duckdb
 import httpx
+import mapbox_vector_tile
+from shapely.geometry import shape
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +22,30 @@ if depot_path := os.environ.get("DEPOT_PATH"):
     sys.path.insert(0, str(Path(depot_path).expanduser()))
 
 from depot.maps import MapGen
+
+
+def game_area_layers(layers: dict, zoom: int, tile_row: int) -> list[dict]:
+    """Move Depot's park and aerodrome features into Subway Builder 1.7 layers."""
+    landuse = layers.pop("landuse", None)
+    if landuse:
+        tile_width = 2 * math.pi * 6378137 / (2**zoom)
+        mercator_y = -math.pi * 6378137 + (tile_row + 0.5) * tile_width
+        latitude = math.atan(math.sinh(mercator_y / 6378137))
+        square_meters_per_unit = (tile_width * math.cos(latitude) / landuse["extent"]) ** 2
+        parks, airports, remaining = [], [], []
+        for feature in landuse["features"]:
+            kind = feature["properties"].get("kind")
+            if kind == "park":
+                feature["properties"]["area"] = shape(feature["geometry"]).area * square_meters_per_unit
+                parks.append(feature)
+            elif kind == "aerodrome":
+                airports.append(feature)
+            else:
+                remaining.append(feature)
+        for name, features in (("parks", parks), ("airports", airports), ("landuse", remaining)):
+            if features:
+                layers[name] = {**landuse, "features": features}
+    return [{"name": name, **layer} for name, layer in layers.items()]
 
 
 class CoverageMapGen(MapGen):
@@ -36,6 +64,12 @@ class CoverageMapGen(MapGen):
         self._run_command(command)
         self._convert_to_game_format(str(cleaned_json))
         self.create_buildings_index_binary(str(cleaned_json))
+
+    def _process_tile_worker(self, tile_tuple):
+        zoom, column, row, compressed = super()._process_tile_worker(tile_tuple)
+        layers = mapbox_vector_tile.decode(zlib.decompress(compressed))
+        translated = game_area_layers(layers, zoom, row)
+        return zoom, column, row, zlib.compress(mapbox_vector_tile.encode(translated))
 
 
 def overture_query(release: str, bbox: list[float], minimum_area: float) -> str:
@@ -158,7 +192,8 @@ def main() -> None:
         "description": (
             "Buenos Aires metropolitan area map built from OpenStreetMap, "
             "Overture buildings, INDEC Census 2022 employed residents, and "
-            "CEP XXI geocoded formal workplace data."
+            "CEP XXI geocoded formal workplace data, with CABA residential "
+            "placement informed by the city's parcel and land-use survey."
         ),
         "population": 0,
         "bbox": config["bbox"],

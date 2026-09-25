@@ -16,6 +16,10 @@ def validate_pmtiles_metadata(metadata: dict) -> None:
     layers = {layer["id"]: layer for layer in metadata.get("vector_layers", [])}
     if any(name in layers for name in ("college", "university", "school")):
         raise ValueError("PMTiles still contain legacy campus layers")
+    if "parks" not in layers or layers["parks"].get("fields", {}).get("area") != "Number":
+        raise ValueError("PMTiles parks layer is missing numeric area")
+    if "airports" not in layers:
+        raise ValueError("PMTiles airports layer is missing")
     if layers.get("commercial", {}).get("fields", {}).get("type") != "String":
         raise ValueError("PMTiles commercial layer is missing college type")
     commercial_stats = next(

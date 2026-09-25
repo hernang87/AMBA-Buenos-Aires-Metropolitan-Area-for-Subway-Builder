@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.build_map import CoverageMapGen, overture_query, run_depot_pipeline
+from scripts.build_map import CoverageMapGen, game_area_layers, overture_query, run_depot_pipeline
 
 
 class FakeGenerator:
@@ -24,6 +24,24 @@ class FakeGenerator:
 
 
 class DepotPipelineTests(unittest.TestCase):
+    def test_translates_parks_and_airports_to_the_game_layers(self):
+        polygon = {"type": "Polygon", "coordinates": [[
+            [100, 100], [900, 100], [900, 900], [100, 900], [100, 100]
+        ]]}
+        layers = {
+            "commercial": {"features": [{"geometry": polygon, "properties": {"kind": "commercial"}}],
+                           "extent": 4096, "version": 2},
+            "landuse": {"features": [
+                {"geometry": polygon, "properties": {"kind": "park"}},
+                {"geometry": polygon, "properties": {"kind": "aerodrome"}},
+            ], "extent": 4096, "version": 2},
+        }
+
+        translated = {layer["name"]: layer for layer in game_area_layers(layers, 12, 1600)}
+
+        self.assertEqual({"commercial", "parks", "airports"}, set(translated))
+        self.assertGreater(translated["parks"]["features"][0]["properties"]["area"], 100000)
+
     def test_building_processor_explodes_multipart_geometry_before_indexes(self):
         class FakeCoverageMap:
             city_dir = "/tmp/BUE"

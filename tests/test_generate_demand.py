@@ -1,4 +1,8 @@
+import csv
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -10,11 +14,52 @@ from scripts.generate_demand import (
     build_demand_report,
     build_output_demand,
     disaggregate_zone_flows,
+    load_census_radios,
     solve_sparse_transport,
 )
+from scripts.prepare_caba_anchors import prepare_anchors
 
 
 class AdaptiveClusterTests(unittest.TestCase):
+    def test_uses_active_residential_parcels_for_display_without_moving_model_zones(self):
+        def polygon(west, south, east, north):
+            return {"type": "Polygon", "coordinates": [[
+                [west, south], [east, south], [east, north], [west, north], [west, south]
+            ]]}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            areas = root / "areas.csv"
+            with areas.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["area_id", "population", "jobs", "geometry"])
+                writer.writeheader()
+                writer.writerow({"area_id": "020000001", "population": 10, "jobs": 8,
+                                 "geometry": json.dumps(polygon(0, 0, 10, 10))})
+            parcels = root / "parcels.geojson"
+            parcels.write_text(json.dumps({"type": "FeatureCollection", "features": [
+                {"type": "Feature", "properties": {"smp": key}, "geometry": polygon(x, 1, x + 1, 2)}
+                for key, x in [("001 - 001 - 001", 1), ("001 - 001 - 002", 7),
+                               ("001 - 001 - 003", 9)]
+            ]}), encoding="utf-8")
+            uses = root / "uses.csv"
+            with uses.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["SMP", "TIPO1", "ESTADO", "PISOS"])
+                writer.writeheader()
+                writer.writerows([
+                    {"SMP": "001-001-001", "TIPO1": "RESIDENCIAL", "ESTADO": "ACTIVO", "PISOS": "1"},
+                    {"SMP": "001-001-002", "TIPO1": "RESIDENCIAL", "ESTADO": "ACTIVO", "PISOS": "3"},
+                    {"SMP": "001-001-003", "TIPO1": "RESIDENCIAL", "ESTADO": "INACTIVO", "PISOS": "20"},
+                ])
+
+            anchors = prepare_anchors(areas, parcels, uses)
+            self.assertEqual(1, len(anchors))
+            self.assertEqual((6.0, 1.5), (anchors[0]["longitude"], anchors[0]["latitude"]))
+            radios = load_census_radios(areas, 20, {"020000001": (6.0, 1.5)})
+            clusters, zones = build_adaptive_clusters(radios, 1)
+            self.assertEqual((6.0, 1.5), clusters[0]["location"])
+            self.assertEqual((5.0, 5.0), clusters[0]["model_location"])
+            self.assertEqual((5.0, 5.0), zones[0]["location"])
+
     def test_allocates_exact_cluster_budget_with_zone_bounds(self):
         self.assertEqual([2, 1, 2], allocate_cluster_counts([100, 10, 80], [2, 1, 3], 5))
 

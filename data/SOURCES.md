@@ -45,3 +45,16 @@ The build queries the latest Overture Maps building release directly for the con
 The v0.3.1 compatibility release reuses the v0.3.0 OSM, Overture 2026-07-22.0, census, and workplace inputs. It rebuilds the basemap tile translation from the retained `bue-clean.mbtiles` with Depot 1.2.7, preserving the building and demand data while moving college, university, and school polygons into the game's commercial tile layer.
 
 The v0.3.2 release changes only the map version and release metadata so the Registry can identify its Subway Builder compatibility range.
+
+### CABA parcels and land use for v0.3.3
+
+Official Buenos Aires City [cadastral parcel GeoJSON](https://data.buenosaires.gob.ar/es/dataset/parcelas) and [2022–2024 land-use survey CSV](https://data.buenosaires.gob.ar/es/dataset/relevamiento-usos-suelo), retrieved 2026-09-24:
+
+- `caba_parcels.geojson`: `https://cdn.buenosaires.gob.ar/datosabiertos/datasets/secretaria-de-desarrollo-urbano/parcelas/parcelas_catastrales.geojson`; SHA-256 `ed572c6b5bd6bf689ed602f14f4ed774259d096e79b76990cc32351e0020d3a7`.
+- `caba_land_use.csv`: `https://cdn.buenosaires.gob.ar/datosabiertos/datasets/secretaria-de-desarrollo-urbano/relevamiento-usos-suelo/relevamiento-usos-del-suelo-2022-2024.csv`; SHA-256 `5743336654ff9034a2f54129dd7c89011aa401c151828319b7fa1b06367fa2f1`.
+
+The city data portal attributes both inputs to the Government of the City of Buenos Aires under a Creative Commons Attribution license; check each resource's current license terms when redistributing source files. The release ships only derived anchors, embedded as demand-point positions, not the source files.
+
+`prepare_caba_anchors.py` joins normalized `SMP`/`smp` identifiers, selects active `RESIDENCIAL` survey records, and uses the maximum reported floor count per parcel as a relative placement weight. It computes a weighted representative point within each CABA census radio; if that mean falls outside the radio, it uses the heaviest parcel's representative point. Radios without a matched residential parcel use their original representative point. The survey describes observed parcel use and floors, not residents or jobs. Census employment totals and CEP XXI workplace capacities remain the model inputs.
+
+The tile pipeline also maps OSM park and aerodrome polygons from Depot's `landuse` layer into Subway Builder 1.7.1's `parks` and `airports` layers. It computes the required numeric park `area` in square metres from the tile geometry. This fixes game visibility for those existing geographic polygons; the cadastral land-use survey is not treated as a complete park boundary inventory.
