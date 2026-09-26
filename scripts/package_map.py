@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -36,6 +38,7 @@ def main() -> None:
     missing = [name for name in files if not (MAP / name).is_file()]
     if missing:
         raise SystemExit(f"Cannot package missing files: {', '.join(missing)}")
+    subprocess.run([sys.executable, str(ROOT / "scripts/validate_map.py")], check=True)
     archive = ROOT / "output/amba.zip"
     temporary = archive.with_suffix(".zip.tmp")
     with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as handle:

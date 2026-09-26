@@ -176,6 +176,32 @@ def validate_report(
         raise ValueError("Exported formal p90 commute drift exceeds 5 km")
 
 
+def validate_source_clusters(demand: dict, source_config: dict, processed: Path) -> None:
+    # Reuse placement without rerunning the expensive gravity solver.
+    if __package__:
+        from .generate_demand import build_adaptive_clusters, load_anchors, load_census_radios
+    else:
+        from generate_demand import build_adaptive_clusters, load_anchors, load_census_radios
+
+    settings = source_config["demand"]
+    radios = load_census_radios(
+        processed / "areas.csv", float(settings["solver_zone_degrees"]),
+        load_anchors(processed / "caba_anchors.csv"),
+    )
+    clusters, _ = build_adaptive_clusters(
+        radios, int(settings["display_cluster_count"]), source_config["bbox"],
+    )
+    expected = {cluster["id"]: cluster for cluster in clusters}
+    if {point["id"] for point in demand["points"]} != expected.keys():
+        raise ValueError("Demand point IDs do not match source clusters")
+    for point in demand["points"]:
+        cluster = expected[point["id"]]
+        if tuple(point["location"]) != tuple(cluster["location"]):
+            raise ValueError(f"Demand location does not match source cluster: {point['id']}")
+        if point["residents"] != cluster["employed_residents"]:
+            raise ValueError(f"Demand residents do not match source cluster: {point['id']}")
+
+
 def main() -> None:
     config = json.loads((MAP / "config.json").read_text(encoding="utf-8"))
     demand = json.loads((MAP / "demand_data.json").read_text(encoding="utf-8"))
@@ -205,6 +231,7 @@ def main() -> None:
     }
     expected_point_count = int(source_config["demand"]["display_cluster_count"])
     try:
+        validate_source_clusters(demand, source_config, ROOT / "data/processed")
         metadata = json.loads(
             subprocess.check_output(
                 ["pmtiles", "show", "--metadata", str(MAP / "BUE.pmtiles")],

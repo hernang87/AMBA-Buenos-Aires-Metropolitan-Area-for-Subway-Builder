@@ -21,8 +21,10 @@ Install Depot and its documented Python/CLI dependencies. The map generator requ
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -U pip
-python -m pip install numpy scipy shapely git+https://github.com/Subway-Builder-Modded/depot.git@1.2.7
+python -m pip install -r requirements.txt
 ```
+
+`requirements.txt` records the tested Python dependency versions, including Depot's exact commit. The environment was verified with Python 3.13 on macOS. If an existing `.venv` points to a removed Python installation, move it aside and recreate it with the commands above.
 
 Fetch and prepare the machine-readable inputs:
 
@@ -43,6 +45,8 @@ python scripts/generate_demand.py
 python scripts/validate_map.py
 python scripts/package_map.py
 ```
+
+Packaging runs the map validator before replacing the archive. Validation reconstructs display clusters from the processed census and CABA anchors, and checks each exported point's identity, position, and resident count against those sources.
 
 The final archive is written to `output/amba.zip`. The registry map ID remains `amba`, while the packaged city code and PMTiles asset use `BUE`. The archive ships the binary building index required by current Subway Builder releases. The build puts college areas in `commercial` with `type: college`, and park and aerodrome polygons in the `parks` and `airports` tile layers read by Subway Builder 1.7.1.
 

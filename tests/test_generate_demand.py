@@ -18,6 +18,7 @@ from scripts.generate_demand import (
     solve_sparse_transport,
 )
 from scripts.prepare_caba_anchors import prepare_anchors
+from scripts.validate_map import validate_source_clusters
 
 
 class AdaptiveClusterTests(unittest.TestCase):
@@ -59,6 +60,21 @@ class AdaptiveClusterTests(unittest.TestCase):
             self.assertEqual((6.0, 1.5), clusters[0]["location"])
             self.assertEqual((5.0, 5.0), clusters[0]["model_location"])
             self.assertEqual((5.0, 5.0), zones[0]["location"])
+            (root / "caba_anchors.csv").write_text(
+                "area_id,longitude,latitude\n020000001,6.0,1.5\n", encoding="utf-8",
+            )
+            config = {"bbox": [0, 0, 10, 10], "demand": {
+                "solver_zone_degrees": 20, "display_cluster_count": 1,
+            }}
+            demand = {"points": [{"id": "origin_00000", "location": [6.0, 1.5], "residents": 8}]}
+            validate_source_clusters(demand, config, root)
+            demand["points"][0]["location"] = [5.0, 5.0]
+            with self.assertRaisesRegex(ValueError, "location does not match source"):
+                validate_source_clusters(demand, config, root)
+            demand["points"][0]["location"] = [6.0, 1.5]
+            demand["points"][0]["residents"] = 9
+            with self.assertRaisesRegex(ValueError, "residents do not match source"):
+                validate_source_clusters(demand, config, root)
 
     def test_allocates_exact_cluster_budget_with_zone_bounds(self):
         self.assertEqual([2, 1, 2], allocate_cluster_counts([100, 10, 80], [2, 1, 3], 5))

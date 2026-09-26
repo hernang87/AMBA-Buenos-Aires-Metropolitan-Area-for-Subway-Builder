@@ -1,4 +1,6 @@
 .venv/
+.venv.previous/
+.DS_Store
 __pycache__/
 *.pyc
 .cache/

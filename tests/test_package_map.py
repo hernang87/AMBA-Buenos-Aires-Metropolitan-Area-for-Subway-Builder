@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -56,8 +57,17 @@ class PackageIdentityTests(unittest.TestCase):
             ):
                 (city / name).write_bytes(b"test")
 
-            with patch.object(package_map, "ROOT", root), patch.object(package_map, "MAP", city):
+            with patch.object(package_map, "ROOT", root), patch.object(package_map, "MAP", city), patch.object(package_map.subprocess, "run") as validate:
                 package_map.main()
+                validate.assert_called_once_with(
+                    [package_map.sys.executable, str(root / "scripts/validate_map.py")], check=True,
+                )
+
+                archive_before = (root / "output/amba.zip").read_bytes()
+                validate.side_effect = subprocess.CalledProcessError(1, "validate_map.py")
+                with self.assertRaises(subprocess.CalledProcessError):
+                    package_map.main()
+                self.assertEqual(archive_before, (root / "output/amba.zip").read_bytes())
 
             manifest = json.loads((root / "output/manifest.json").read_text())
             self.assertEqual(">=1.7.1", manifest["dependencies"]["subway-builder"])
