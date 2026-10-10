@@ -1,0 +1,30 @@
+{
+  "files": {
+    "data/raw/caba_land_use.csv": {
+      "policy": "pinned",
+      "retrieved": "2026-09-24",
+      "sha256": "5743336654ff9034a2f54129dd7c89011aa401c151828319b7fa1b06367fa2f1"
+    },
+    "data/raw/caba_parcels.geojson": {
+      "policy": "pinned",
+      "retrieved": "2026-09-24",
+      "sha256": "ed572c6b5bd6bf689ed602f14f4ed774259d096e79b76990cc32351e0020d3a7"
+    },
+    "data/raw/rmba_areas.geojson": {
+      "policy": "volatile",
+      "retrieved": null,
+      "sha256": null
+    },
+    "data/raw/rmba_stats.csv": {
+      "policy": "record",
+      "retrieved": null,
+      "sha256": null
+    },
+    "data/raw/workplaces.csv": {
+      "policy": "record",
+      "retrieved": null,
+      "sha256": null
+    }
+  },
+  "version": 1
+}
