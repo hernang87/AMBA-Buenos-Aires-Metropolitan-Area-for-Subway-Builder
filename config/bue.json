@@ -3,7 +3,7 @@
   "name": "Buenos Aires Metropolitan Area",
   "country": "AR",
   "creator": "",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "osmpbf": "argentina-latest.osm.pbf",
   "depot": {"ncores": 4},
   "registry": {"subway_builder": ">=1.7.1"},
