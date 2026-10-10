@@ -153,4 +153,4 @@ The demand code lives in `scripts/demand/` (clustering, transport, output, and p
 - Depot: <https://github.com/Subway-Builder-Modded/depot>
 - CABA cadastral parcels: <https://data.buenosaires.gob.ar/es/dataset/parcelas>
 - CABA 2022–2024 land-use survey: <https://data.buenosaires.gob.ar/es/dataset/relevamiento-usos-suelo>
-- Railyard documentation: <https://subwaybuildermodded.com/railyard/docs/v0.2/developers/>
+- Railyard registry (map listing and release requirements): <https://github.com/Subway-Builder-Modded/registry>
