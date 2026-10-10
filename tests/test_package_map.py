@@ -49,7 +49,9 @@ class PackageIdentityTests(unittest.TestCase):
             city = root / "output/BUE"
             city.mkdir(parents=True)
             (root / "config").mkdir()
-            (root / "config/bue.json").write_text('{"version":"1.0.0"}')
+            (root / "config/bue.json").write_text(
+                '{"version":"1.0.0","registry":{"subway_builder":">=1.7.1"}}'
+            )
             (city / "config.json").write_text('{"code":"BUE","version":"1.0.0"}')
             for name in (
                 "BUE.pmtiles", "buildings_index.bin", "demand_data.json",

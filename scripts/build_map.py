@@ -21,7 +21,12 @@ os.environ.setdefault("XDG_CACHE_HOME", str(ROOT / ".cache"))
 if depot_path := os.environ.get("DEPOT_PATH"):
     sys.path.insert(0, str(Path(depot_path).expanduser()))
 
-from depot.maps import MapGen
+try:
+    from depot.maps import MapGen  # noqa: E402
+except ModuleNotFoundError as error:
+    if error.name not in {"depot", "depot.maps"}:
+        raise
+    MapGen = None
 
 
 def game_area_layers(layers: dict, zoom: int, tile_row: int) -> list[dict]:
@@ -48,7 +53,7 @@ def game_area_layers(layers: dict, zoom: int, tile_row: int) -> list[dict]:
     return [{"name": name, **layer} for name, layer in layers.items()]
 
 
-class CoverageMapGen(MapGen):
+class CoverageMapGen(MapGen if MapGen is not None else object):
     """Depot pipeline with multipart buildings normalized before indexing."""
 
     def process_buildings(self) -> None:
@@ -138,9 +143,27 @@ def prepare_overture_buildings(
     return buildings
 
 
+def resolve_osmpbf(config: dict, root: Path, environ) -> Path:
+    if "OSM_PBF" in environ:
+        p = Path(environ["OSM_PBF"]).expanduser()
+        candidates = [p if p.is_absolute() else root / p]
+    else:
+        p = Path(config["osmpbf"]).expanduser()
+        if p.is_absolute():
+            candidates = [p]
+        else:
+            candidates = [root / p, root / "data/raw" / p.name]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise SystemExit("OSM PBF not found; looked in: " + ", ".join(map(str, candidates)))
+
+
 def create_generator(
     config: dict, osmpbf: Path, output_root: Path, buildings: Path
 ) -> MapGen:
+    if MapGen is None:
+        raise SystemExit("Depot is not installed; install requirements.txt to build the map")
     labels = config["labels"]
     ram_gb = int(os.environ.get("DEPOT_RAM_GB", "8"))
     return CoverageMapGen(
@@ -151,7 +174,7 @@ def create_generator(
         cities=labels["cities"],
         suburbs=labels["suburbs"],
         neighborhoods=labels["neighborhoods"],
-        ncores=4,
+        ncores=int(os.environ.get("DEPOT_NCORES", config["depot"]["ncores"])),
         RAM=ram_gb,
         buildings_geojson=str(buildings),
         cleanup_files=False,
@@ -173,9 +196,7 @@ def main() -> None:
     output_root = ROOT / "output"
     output = output_root / config["city"]
     output.mkdir(parents=True, exist_ok=True)
-    osmpbf = Path(os.environ.get("OSM_PBF", config["osmpbf"])).expanduser()
-    if not osmpbf.is_absolute():
-        osmpbf = ROOT / osmpbf
+    osmpbf = resolve_osmpbf(config, ROOT, os.environ)
 
     refresh = os.environ.get("OVERTURE_REFRESH", "1").lower() not in {
         "0",
