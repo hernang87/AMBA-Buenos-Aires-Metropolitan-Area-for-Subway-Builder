@@ -1,0 +1,39 @@
+{
+  "totals": {
+    "employed": 2800,
+    "formal": 1014,
+    "local_residual": 1786
+  },
+  "model": {
+    "dense_candidate_edges": 16,
+    "dense_positive_edges": 16,
+    "solver_zones": 4,
+    "sparse_zone_flows": 11,
+    "dense_formal_mean_km": 1.646731173705343,
+    "dense_formal_p90_km": 2.8447780279512966,
+    "exported_formal_mean_km": 2.106224178977164,
+    "exported_formal_p50_km": 2.5332100528293204,
+    "exported_formal_p90_km": 3.364654176150141,
+    "exported_formal_max_km": 3.589924040662101
+  },
+  "output": {
+    "points": 8,
+    "job_points": 8,
+    "resident_points": 8,
+    "duplicate_coordinates": 0,
+    "populations": 29,
+    "population_size_min": 1,
+    "population_size_median": 87.0,
+    "population_size_mean": 96.55172413793103,
+    "population_size_p90": 200.0,
+    "population_size_max": 200,
+    "radios_per_cluster_median": 2.0,
+    "radios_per_cluster_p90": 2.5999999999999996,
+    "radios_per_cluster_max": 4,
+    "employed_per_cluster_median": 350.0,
+    "employed_per_cluster_p90": 465.0,
+    "employed_per_cluster_max": 500,
+    "demand_json_bytes": 5167,
+    "caba_anchored_radios": 1
+  }
+}
