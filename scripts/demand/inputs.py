@@ -45,7 +45,7 @@ def load_census_radios(
                     "id": row["area_id"],
                     "location": location,
                     "display_location": display_location,
-                    "employed_residents": int(round(float(row["jobs"]))),  # noqa: RUF046
+                    "employed_residents": int(round(float(row["jobs"]))),
                     "zone_key": (
                         math.floor(location[0] / solver_zone_degrees),
                         math.floor(location[1] / solver_zone_degrees),

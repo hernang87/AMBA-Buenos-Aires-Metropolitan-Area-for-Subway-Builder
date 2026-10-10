@@ -24,7 +24,7 @@ def distance_km(first: tuple[float, float], second: tuple[float, float]) -> floa
 
 def integerize(values: np.ndarray, total: int | None = None) -> np.ndarray:
     floors = np.floor(values).astype(np.int64)
-    target = int(round(float(values.sum()))) if total is None else total  # noqa: RUF046
+    target = int(round(float(values.sum()))) if total is None else total
     extra = target - int(floors.sum())
     if extra < 0 or extra > len(values):
         raise ValueError("Cannot integerize values with the requested total")

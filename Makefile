@@ -5,7 +5,8 @@
 # Stages depend on the slice they use, so editing one config section rebuilds
 # only the stages whose slice changed. Build outputs that are not files of their
 # own (the build step) are tracked with the stamp output/BUE/.build.stamp.
-# Use `make mark-built` to adopt existing build artifacts without rebuilding.
+# Use `make mark-built` to adopt existing prepared inputs, map build and demand
+# artifacts as up to date (only packaging then reruns).
 
 PYTHON ?= .venv/bin/python
 CONFIG := config/bue.json
@@ -51,8 +52,10 @@ lint:
 
 check: test lint
 
-mark-built: $(SLICES)/build.json
+mark-built: $(SLICES)/build.json $(SLICES)/workplaces.json $(SLICES)/demand.json
+	touch $(PROCESSED)/areas.csv $(PROCESSED)/workplaces.csv $(PROCESSED)/caba_anchors.csv
 	touch $(MAP)/.build.stamp
+	touch $(MAP)/demand_data.json
 
 $(SLICES)/%.json: $(CONFIG) scripts/config_slice.py
 	$(PYTHON) scripts/config_slice.py $* $@
