@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 os.environ.setdefault("MPLCONFIGDIR", str(ROOT / ".cache/matplotlib"))
 os.environ.setdefault("XDG_CACHE_HOME", str(ROOT / ".cache"))
 
-import geopandas as gpd
-import matplotlib.pyplot as plt
+import geopandas as gpd  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
 
 BG = "#101827"
 LAND = "#18263a"
