@@ -1,10 +1,12 @@
-# AMBA for Subway Builder
+# Buenos Aires (BUE) for Subway Builder
 
 Reproducible build pipeline for an Área Metropolitana de Buenos Aires map played in Subway Builder and distributed through the Railyard mod manager.
 
+Naming: AMBA is the geographic region. `BUE` is the in-game city code and the PMTiles asset name. `amba` is the Railyard registry ID and the archive name `output/amba.zip`, kept unchanged for Registry compatibility.
+
 ## Inputs
 
-- `argentina-latest.osm.pbf` at the repository root, or another Argentina OSM PBF, for roads and geographic context.
+- `argentina-latest.osm.pbf` at the repository root or in `data/raw/`, or another Argentina OSM PBF set with `OSM_PBF`, for roads and geographic context.
 - An INDEC RMBA census-area GeoJSON file.
 - A UTF-8 CSV containing `area_id,population,jobs` for the same census areas. `population` is total residents and `jobs` is employed residents used as demand producers.
 - The official CEP XXI geocoded formal-workplace CSV, downloaded by `fetch_workplace_data.py`.
@@ -26,10 +28,65 @@ python -m pip install -r requirements.txt
 
 `requirements.txt` records the tested Python dependency versions, including Depot's exact commit. The environment was verified with Python 3.13 on macOS. If an existing `.venv` points to a removed Python installation, move it aside and recreate it with the commands above.
 
+## Quick start
+
+The Makefile drives the whole pipeline. Run it from the repository root with the venv from Setup active or `PYTHON` pointing at your interpreter.
+
+```sh
+make            # full pipeline, up to output/amba.zip
+make mark-built # adopt already-prepared inputs, map build and demand artifacts as up to date, so only packaging reruns
+make verify     # check data/raw files against data/checksums.json
+```
+
+Individual stages (each target is a Makefile target; see the Makefile for the exact prerequisites):
+
+- `make download`: fetch the raw inputs in `data/raw/` that are missing.
+- `make prepare`: write `data/processed/areas.csv`, `workplaces.csv`, and `caba_anchors.csv`.
+- `make build`: run `scripts/build_map.py` (Depot map build, stamped at `output/BUE/.build.stamp`).
+- `make demand`: write `output/BUE/demand_data.json`.
+- `make validate`: run `scripts/validate_map.py`.
+- `make package`: write `output/amba.zip` (the default `make` target is `all`, which is the same as `package`).
+- `make regions`: prepare the Subway Builder Regions datasets (see Extras below).
+- `make gallery`: export preview PNGs (see Extras below).
+- `make test`, `make lint`, `make check` (test and lint): see Development.
+- `make verify`: see Input verification.
+- `make mark-built`: see above.
+
+Stages are tracked by stamps and config slices. Each config section is written to `output/.config/<name>.json` (`build`, `demand`, `workplaces`) by `scripts/config_slice.py`, and a stage reruns only when the slice it uses changes. For example, bumping `version` in `config/bue.json` reruns demand and packaging but not the Depot build, because `version` is excluded from the build slice. Packaging also depends on `config/bue.json` directly, so it reruns on any config edit.
+
+## Environment variables
+
+- `OSM_PBF`: path to the Argentina OSM PBF used by `build_map.py`. When set, it overrides `osmpbf` in `config/bue.json`; relative paths resolve from the repository root.
+- `DEPOT_RAM_GB`: memory limit in GB passed to Depot (`RAM`), which sets the Mapshaper Node heap. Default `8`.
+- `DEPOT_NCORES`: worker count passed to Depot. Default is `depot.ncores` in `config/bue.json` (currently `4`).
+- `OVERTURE_REFRESH`: default `1`. Set `0` to reuse the cached Overture export in `output/BUE/` when the cached release matches the latest release. The latest release is still looked up from the Overture catalog.
+- `DEPOT_PATH`: directory of a local Depot checkout. `build_map.py` prepends it to `sys.path`, so it takes precedence over an installed `depot` package.
+- `PYTHON`: interpreter used by the Makefile. Default `.venv/bin/python`.
+
+## Input verification
+
+`data/checksums.json` records a SHA-256 for each file in `data/raw/` under one of three policies:
+
+- `pinned`: the download must match the recorded hash; a mismatch fails.
+- `record`: the hash is saved on first fetch; a later mismatch fails unless `--update` is given.
+- `volatile`: upstream bytes change on every fetch; an existing file is kept unless `--force` is given, and the hash is informational.
+
+Commands:
+
+- `python scripts/checksums.py verify [KEY...]` reports each file as `match`, `mismatch`, `missing`, `unrecorded`, or `changed` (volatile); it exits non-zero on a mismatch. `make verify` runs it for all listed files.
+- `python scripts/checksums.py record KEY...` records the current hash of the listed files.
+- `scripts/download_sources.py` and `scripts/fetch_workplace_data.py` accept `--update` (accept an upstream change for `pinned` and `record` files, which otherwise fail) and `--force` (re-download a file that already exists, which is how `volatile` files are refreshed).
+
+See [data/SOURCES.md](data/SOURCES.md#checksums) for details.
+
+## Manual steps
+
+The Makefile is the supported path. The commands below are the equivalent manual sequence. `scripts/download_sources.sh` is a thin wrapper that runs `python scripts/download_sources.py`, so either works.
+
 Fetch and prepare the machine-readable inputs:
 
 ```sh
-./scripts/download_sources.sh
+python scripts/download_sources.py
 python scripts/fetch_redatam_stats.py
 python scripts/prepare_census.py --areas data/raw/rmba_areas.geojson --stats data/raw/rmba_stats.csv --output data/processed/areas.csv
 python scripts/fetch_workplace_data.py
@@ -52,6 +109,25 @@ The final archive is written to `output/amba.zip`. The registry map ID remains `
 
 The release includes `output/amba.zip`, `output/amba.sha256`, and `output/manifest.json` as separate assets. The Registry reads the manifest's `subway-builder` dependency range for maps as well as mods. The manifest is not inside the map ZIP.
 
+## Extras: regions and gallery
+
+`python scripts/prepare_regions.py` (or `make regions`) reads `data/raw/rmba_areas.geojson` and `data/processed/areas.csv` and writes `output/BUE-regions/`, containing `radios-censales.geojson` (one feature per census radio), `partidos.geojson`, and `comunas.geojson` (radios dissolved by partido or CABA comuna, with summed population and jobs), plus a `README.txt`. It also writes `output/BUE-regions.zip`, which packages the same files. Copy the GeoJSON files into the Subway Builder Regions mod directory as described in that README.
+
+`python scripts/export_gallery.py --roads <roads.geojson> --regions <regions dir>` writes PNG previews to `output/gallery/` by default (`--output` changes it). Both `--roads` and `--regions` are required. `make gallery` passes `output/BUE/roads.geojson` and `output/BUE-regions`, so run `make regions` first and build the map before running it.
+
+## Development
+
+`make check` runs the unit tests and ruff (`make test` and `make lint`). Tests use `python -m unittest discover -s tests`, which must be run from the repository root.
+
+CI (`.github/workflows/ci.yml`) runs the same lint and test commands on Python 3.13 with `requirements-ci.txt`. CI does not need Depot or the raw inputs.
+
+## Project docs
+
+- [CHANGELOG.md](CHANGELOG.md): release history.
+- [NOTICE.md](NOTICE.md): third-party attribution and license status.
+- [data/SOURCES.md](data/SOURCES.md): exact source URLs, retrieval dates, filtering, and checksums for each input.
+- [docs/adr/](docs/adr/): architecture decision records.
+
 ## Demand model
 
 Demand uses employed residents (`Ocupado`) from the official Census 2022 RMBA census-area export. Formal CEP XXI/SIPA workplace capacity is balanced against scaled employed-resident origins with a doubly constrained gravity model. The dense gravity matrix is projected onto a sparse exact transportation solution that preserves every origin and workplace-cell total while favoring the highest-probability gravity edges.
@@ -67,6 +143,8 @@ Run the focused regression suite with:
 ```sh
 python -m unittest discover -s tests
 ```
+
+The demand code lives in `scripts/demand/` (clustering, transport, output, and pipeline modules) behind the `scripts/generate_demand.py` entry point.
 
 ## Sources
 
