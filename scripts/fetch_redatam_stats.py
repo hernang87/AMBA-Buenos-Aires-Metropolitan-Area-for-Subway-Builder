@@ -4,10 +4,11 @@ import argparse
 import csv
 import re
 import subprocess
+import sys
 import tempfile
+import time
 from html.parser import HTMLParser
 from pathlib import Path
-
 
 ENDPOINT = "https://redatam.indec.gob.ar/binarg/RpWebStats.exe/AreaList?"
 BASE_PARAMS = {
@@ -55,17 +56,25 @@ class TableParser(HTMLParser):
             self.current_row = None
 
 
-def query(cookie_jar: Path, selection: str) -> list[dict[str, int | str]]:
-    params = {**BASE_PARAMS, "SELECTION": selection}
-    command = ["curl", "-fsSL", "-c", str(cookie_jar), "-b", str(cookie_jar), "-X", "POST", ENDPOINT]
-    for key, value in params.items():
-        command.extend(["--data-urlencode", f"{key}={value}"])
-    landing = subprocess.run(command, check=True, capture_output=True, text=True).stdout
+def run_with_retries(command: list[str], attempts: int = 3, delay_seconds: float = 2.0, sleep=time.sleep) -> str:
+    for attempt in range(1, attempts + 1):
+        try:
+            return subprocess.run(command, check=True, capture_output=True, text=True).stdout
+        except subprocess.CalledProcessError:
+            if attempt == attempts:
+                raise
+            print(f"Warning: attempt {attempt}/{attempts} failed, retrying", file=sys.stderr)
+            sleep(delay_seconds * 2 ** (attempt - 1))
+
+
+def grid_url_from_landing(landing: str) -> str:
     match = re.search(r"<iframe src=['\"]([^'\"]+)['\"]", landing)
     if not match:
         raise RuntimeError("Redatam did not return an output iframe")
-    grid_url = "https://redatam.indec.gob.ar" + match.group(1)
-    grid = subprocess.run(["curl", "-fsSL", "-b", str(cookie_jar), grid_url], check=True, capture_output=True, text=True).stdout
+    return "https://redatam.indec.gob.ar" + match.group(1)
+
+
+def parse_grid(grid: str, selection: str) -> list[dict[str, int | str]]:
     parser = TableParser()
     parser.feed(grid)
     def number(value: str) -> int:
@@ -81,13 +90,30 @@ def query(cookie_jar: Path, selection: str) -> list[dict[str, int | str]]:
     return results
 
 
+def query(cookie_jar: Path, selection: str, record_dir: Path | None = None) -> list[dict[str, int | str]]:
+    params = {**BASE_PARAMS, "SELECTION": selection}
+    command = ["curl", "--connect-timeout", "30", "-fsSL", "-c", str(cookie_jar), "-b", str(cookie_jar), "-X", "POST", ENDPOINT]
+    for key, value in params.items():
+        command.extend(["--data-urlencode", f"{key}={value}"])
+    landing = run_with_retries(command)
+    grid_url = grid_url_from_landing(landing)
+    grid = run_with_retries(["curl", "--connect-timeout", "30", "-fsSL", "-b", str(cookie_jar), grid_url])
+    if record_dir is not None:
+        record_dir.mkdir(parents=True, exist_ok=True)
+        safe = selection.replace("\\", "_").replace(".", "_")
+        (record_dir / f"{safe}_landing.html").write_text(landing, encoding="utf-8")
+        (record_dir / f"{safe}_grid.html").write_text(grid, encoding="utf-8")
+    return parse_grid(grid, selection)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export Census 2022 population and occupied people by radio from INDEC Redatam.")
     parser.add_argument("--output", type=Path, default=Path("data/raw/rmba_stats.csv"))
+    parser.add_argument("--record-dir", type=Path, default=None)
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as temporary_directory:
         cookie_jar = Path(temporary_directory) / "cookies.txt"
-        rows = query(cookie_jar, r"Sels\Prov02.sel") + query(cookie_jar, r"Sels\Prov06.sel")
+        rows = query(cookie_jar, r"Sels\Prov02.sel", args.record_dir) + query(cookie_jar, r"Sels\Prov06.sel", args.record_dir)
     deduplicated = {row["area_id"]: row for row in rows}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", newline="", encoding="utf-8") as handle:
