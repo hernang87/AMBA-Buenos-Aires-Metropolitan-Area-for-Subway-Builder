@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import argparse
-import json
 import zipfile
 from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare SubwayBuilder Regions datasets for AMBA")
-    parser.add_argument("--areas", type=Path, default=Path("data/raw/rmba_areas.geojson"))
-    parser.add_argument("--stats", type=Path, default=Path("data/processed/areas.csv"))
-    parser.add_argument("--output", type=Path, default=Path("output/BUE-regions"))
+    parser.add_argument("--areas", type=Path, default=ROOT / "data/raw/rmba_areas.geojson")
+    parser.add_argument("--stats", type=Path, default=ROOT / "data/processed/areas.csv")
+    parser.add_argument("--output", type=Path, default=ROOT / "output/BUE-regions")
     args = parser.parse_args()
 
     stats = pd.read_csv(args.stats, dtype={"area_id": str})
@@ -83,7 +84,7 @@ def main() -> None:
     readme = args.output / "README.txt"
     readme.write_text(
         "AMBA datasets for SubwayBuilder Regions.\n\n"
-        "Copy the two GeoJSON files into your Subway Builder Regions mod directory:\n"
+        "Copy the three GeoJSON files into your Subway Builder Regions mod directory:\n"
         "mods/regions/data/BUE/\n\n"
         "The radio layer uses INDEC cod_indec as its stable area_id.\n"
         "The partido layer dissolves those radio geometries by the first five\n"
