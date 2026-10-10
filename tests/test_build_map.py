@@ -1,6 +1,18 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
-from scripts.build_map import CoverageMapGen, game_area_layers, overture_query, run_depot_pipeline
+from scripts import build_map
+from scripts.build_map import (
+    CoverageMapGen,
+    create_generator,
+    game_area_layers,
+    overture_query,
+    resolve_osmpbf,
+    run_depot_pipeline,
+)
 
 
 class FakeGenerator:
@@ -96,6 +108,83 @@ class DepotPipelineTests(unittest.TestCase):
             ],
             generator.calls,
         )
+
+
+class OsmPbfResolutionTests(unittest.TestCase):
+    def test_root_file_wins_over_data_raw(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "data/raw").mkdir(parents=True)
+            (root / "data/raw/extract.osm.pbf").write_bytes(b"raw")
+            (root / "extract.osm.pbf").write_bytes(b"root")
+
+            resolved = resolve_osmpbf({"osmpbf": "extract.osm.pbf"}, root, {})
+
+            self.assertEqual(root / "extract.osm.pbf", resolved)
+
+    def test_falls_back_to_data_raw(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "data/raw").mkdir(parents=True)
+            (root / "data/raw/extract.osm.pbf").write_bytes(b"raw")
+
+            resolved = resolve_osmpbf({"osmpbf": "extract.osm.pbf"}, root, {})
+
+            self.assertEqual(root / "data/raw/extract.osm.pbf", resolved)
+
+    def test_osm_pbf_env_relative_path_resolves_against_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "maps").mkdir()
+            (root / "maps/custom.osm.pbf").write_bytes(b"custom")
+
+            resolved = resolve_osmpbf(
+                {"osmpbf": "extract.osm.pbf"}, root, {"OSM_PBF": "maps/custom.osm.pbf"}
+            )
+
+            self.assertEqual(root / "maps/custom.osm.pbf", resolved)
+
+    def test_raises_system_exit_when_nothing_found(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            with self.assertRaises(SystemExit):
+                resolve_osmpbf({"osmpbf": "missing.osm.pbf"}, root, {})
+
+
+class CreateGeneratorTests(unittest.TestCase):
+    def setUp(self):
+        self.config = {
+            "city": "BUE",
+            "bbox": [-59.4, -35.2, -57.7, -34.2],
+            "labels": {"cities": ["city"], "suburbs": ["suburb"], "neighborhoods": ["quarter"]},
+            "depot": {"ncores": 4},
+        }
+
+    def _create(self):
+        created = []
+
+        class RecordingGenerator:
+            def __init__(self, **kwargs):
+                created.append(kwargs)
+
+        with patch.object(build_map, "MapGen", object), \
+                patch.object(build_map, "CoverageMapGen", RecordingGenerator):
+            create_generator(self.config, Path("x.pbf"), Path("out"), Path("b.geojson"))
+        return created[-1]
+
+    def test_passes_ncores_from_config(self):
+        with patch.dict(os.environ):
+            os.environ.pop("DEPOT_NCORES", None)
+            kwargs = self._create()
+
+        self.assertEqual(4, kwargs["ncores"])
+
+    def test_depot_ncores_env_overrides_config(self):
+        with patch.dict(os.environ, {"DEPOT_NCORES": "6"}):
+            kwargs = self._create()
+
+        self.assertEqual(6, kwargs["ncores"])
 
 
 if __name__ == "__main__":
