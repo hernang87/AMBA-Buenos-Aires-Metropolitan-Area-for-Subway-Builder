@@ -34,19 +34,21 @@ Demand first balances formal workplace capacity against scaled residence-based e
 
 Exported job points use employed-resident-weighted adaptive census-cluster coordinates and may contain more than 200 jobs. Only individual population records are split to at most 200 people for game compatibility. Residence, workplace, and local-employment roles in the same cluster share one demand point.
 
-## Existing local input
+### OpenStreetMap extract
 
-`argentina-latest.osm.pbf` is the current local OSM extract used by default for roads and geographic context. Replace it with a newer extract when rebuilding and record its source date here.
+- File: `argentina-latest.osm.pbf` (repository root or `data/raw/`)
+- Source URL: TODO(owner)
+- Extract timestamp (`osmium fileinfo -e`): TODO(owner)
+- SHA-256: TODO(owner)
+- License: ODbL 1.0, © OpenStreetMap contributors
 
 ### Overture buildings
 
-The build queries the latest Overture Maps building release directly for the configured bounding box. The v0.3.0 build applies Depot v1.2.3's 40 m² minimum footprint threshold before materialization, exports only geometry and height, then uses Depot's 1 m simplification, native indexes, and tile generation with an 8 GB Mapshaper cap. Multipart footprints are exploded before indexing so JSON and binary counts reconcile. OSM building tags are not substituted for this source.
+The build queries the latest Overture Maps building release at build time for the configured bounding box. The release used is recorded in `output/BUE/buildings_overture_release.txt` (current build: `2026-07-22.0`). The build applies Depot v1.2.3's 40 m² minimum footprint threshold before materialization, exports only geometry and height, then uses Depot's 1 m simplification, native indexes, and tile generation with an 8 GB Mapshaper cap. Multipart footprints are exploded before indexing so JSON and binary counts reconcile. OSM building tags are not substituted for this source.
 
-The v0.3.1 compatibility release reuses the v0.3.0 OSM, Overture 2026-07-22.0, census, and workplace inputs. It rebuilds the basemap tile translation from the retained `bue-clean.mbtiles` with Depot 1.2.7, preserving the building and demand data while moving college, university, and school polygons into the game's commercial tile layer.
+Release history: see [CHANGELOG.md](../CHANGELOG.md).
 
-The v0.3.2 release changes only the map version and release metadata so the Registry can identify its Subway Builder compatibility range.
-
-### CABA parcels and land use for v0.3.3
+### CABA parcels and land use
 
 Official Buenos Aires City [cadastral parcel GeoJSON](https://data.buenosaires.gob.ar/es/dataset/parcelas) and [2022–2024 land-use survey CSV](https://data.buenosaires.gob.ar/es/dataset/relevamiento-usos-suelo), retrieved 2026-09-24:
 
@@ -58,3 +60,23 @@ The city data portal attributes both inputs to the Government of the City of Bue
 `prepare_caba_anchors.py` joins normalized `SMP`/`smp` identifiers, selects active `RESIDENCIAL` survey records, and uses the maximum reported floor count per parcel as a relative placement weight. It computes a weighted representative point within each CABA census radio; if that mean falls outside the radio, it uses the heaviest parcel's representative point. Radios without a matched residential parcel use their original representative point. The survey describes observed parcel use and floors, not residents or jobs. Census employment totals and CEP XXI workplace capacities remain the model inputs.
 
 The tile pipeline also maps OSM park and aerodrome polygons from Depot's `landuse` layer into Subway Builder 1.7.1's `parks` and `airports` layers. It computes the required numeric park `area` in square metres from the tile geometry. This fixes game visibility for those existing geographic polygons; the cadastral land-use survey is not treated as a complete park boundary inventory.
+
+### Depot basemap inputs (data/sources/)
+
+- `natural_earth_vector.sqlite.zip`: Natural Earth, public domain. verify (TODO owner)
+- `lake_centerline.shp.zip`: Natural Earth, public domain. verify (TODO owner)
+- `water-polygons-split-3857.zip`: OSM-derived, ODbL. verify (TODO owner)
+
+## Checksums
+
+`data/checksums.json` records a per-file SHA-256 under one of three policies:
+
+- `pinned`: the download must match the recorded hash; a mismatch fails.
+- `record`: the hash is saved on first fetch; a later mismatch fails unless `--update` is given.
+- `volatile`: the upstream bytes change on every fetch (e.g. the INDEC WFS GeoJSON, which includes a timestamp). An existing file is kept unless `--force` is given; the hash is informational only.
+
+Commands:
+
+- `python scripts/checksums.py verify`
+- `python scripts/checksums.py record KEY...`
+- `scripts/download_sources.py` and `scripts/fetch_workplace_data.py` accept `--update` (for `record` mismatches) and `--force` (for `volatile` files).
