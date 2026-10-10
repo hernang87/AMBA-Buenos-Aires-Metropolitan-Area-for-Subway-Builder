@@ -12,18 +12,18 @@
     },
     "data/raw/rmba_areas.geojson": {
       "policy": "volatile",
-      "retrieved": null,
-      "sha256": null
+      "retrieved": "2026-10-10",
+      "sha256": "ecc4b9c6ebe43897ecb65432b68210c64346dabdb4d8187b70d945af484f556f"
     },
     "data/raw/rmba_stats.csv": {
       "policy": "record",
-      "retrieved": null,
-      "sha256": null
+      "retrieved": "2026-10-10",
+      "sha256": "25d6f945cdca1f8c8ca4a06fe8e7fba1f0409daa2f79d43fc5598b059222fff0"
     },
     "data/raw/workplaces.csv": {
       "policy": "record",
-      "retrieved": null,
-      "sha256": null
+      "retrieved": "2026-10-10",
+      "sha256": "d78737e744f04814f7f7c952324c4666e1cb54c81bb645236cc39106939c912c"
     }
   },
   "version": 1
